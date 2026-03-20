@@ -7,6 +7,7 @@
   <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: #f5f2eb; font-family: monospace; }
@@ -14,225 +15,281 @@
   </style>
 </head>
 <body>
-  <div id="root"></div>
-  <script type="text/babel">
-    const { useState } = React;
+<div id="root"></div>
+<script type="text/babel">
+const { useState, useEffect } = React;
 
-    const SOURCES = [
-      { id: "cciaa",     name: "Registro Imprese / CCIAA", cost: "~€7-15" },
-      { id: "inipec",    name: "IniPEC / PEC ufficiali",   cost: "Gratuito" },
-      { id: "linkedin",  name: "LinkedIn",                 cost: "Gratuito" },
-      { id: "gazzetta",  name: "Gazzetta Ufficiale",       cost: "Gratuito" },
-      { id: "tribunali", name: "Tribunali / Fallimenti",   cost: "Gratuito" },
-      { id: "cerved",    name: "Cerved / CRIF",            cost: "€50-200" },
-    ];
+// ─── GITHUB GIST CONFIG ───────────────────────────────────────────────────────
+const GH_TOKEN   = "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";
+const GIST_FILE  = "lextrace_reports.json";
+let   GIST_ID    = localStorage.getItem("lextrace_gist_id") || "";
 
-    function buildLinks(data) {
-      const isP = data.tab === "persona";
-      const q   = encodeURIComponent(`"${isP ? data.nome + " " + data.cognome : data.ragione}"`);
-      const qR  = encodeURIComponent(isP ? data.nome + " " + data.cognome : data.ragione);
-      const qCf = encodeURIComponent(data.cf || qR);
+async function getOrCreateGist() {
+  if (GIST_ID) return GIST_ID;
+  // Cerca gist esistente
+  const list = await fetch("https://api.github.com/gists", {
+    headers: { Authorization: "token " + GH_TOKEN, Accept: "application/vnd.github.v3+json" }
+  }).then(r => r.json());
+  const found = list.find && list.find(g => g.files && g.files[GIST_FILE]);
+  if (found) {
+    GIST_ID = found.id;
+    localStorage.setItem("lextrace_gist_id", GIST_ID);
+    return GIST_ID;
+  }
+  // Crea nuovo gist
+  const created = await fetch("https://api.github.com/gists", {
+    method: "POST",
+    headers: { Authorization: "token " + GH_TOKEN, Accept: "application/vnd.github.v3+json", "Content-Type": "application/json" },
+    body: JSON.stringify({ description: "LexTrace Reports", public: false, files: { [GIST_FILE]: { content: JSON.stringify({ reports: [] }) } } })
+  }).then(r => r.json());
+  GIST_ID = created.id;
+  localStorage.setItem("lextrace_gist_id", GIST_ID);
+  return GIST_ID;
+}
 
-      return [
-        {
-          label: "🔍 Motori di ricerca",
-          links: [
-            { name: "Google — menzioni web",       url: `https://www.google.com/search?q=${q}` },
-            { name: "Google News — notizie",       url: `https://news.google.com/search?q=${q}&hl=it` },
-            { name: "Google — segnali negativi",   url: `https://www.google.com/search?q=${q}+%22protesto%22+%22truffa%22+%22inadempiente%22` },
-            { name: "Bing — ricerca alternativa",  url: `https://www.bing.com/search?q=${q}` },
-          ]
-        },
-        {
-          label: "🏢 Registro Imprese / CCIAA",
-          links: [
-            { name: "Registro Imprese — cerca",      url: `https://www.registroimprese.it/ricerca-libera?q=${q}` },
-            { name: "Telemaco InfoCamere — visure",  url: `https://www.telemaco.infocamere.it` },
-            { name: "OpenCorporates — Italia",       url: `https://opencorporates.com/search?q=${qR}&jurisdiction_code=it` },
-          ]
-        },
-        {
-          label: "📋 PEC e Contatti Ufficiali",
-          links: [
-            { name: "IniPEC — PEC ufficiale",        url: `https://www.inipec.gov.it/cerca-pec/-/pec/impresa?cf=${qCf}` },
-            { name: "Pagine Gialle — aziende",       url: `https://www.paginegialle.it/ricerca?qs=${qR}` },
-            { name: "Pagine Bianche — persone",      url: `https://www.paginebianche.it/ricerca?qs=${qR}` },
-          ]
-        },
-        {
-          label: "💼 Profili Professionali",
-          links: [
-            { name: "LinkedIn — persona",     url: `https://www.linkedin.com/search/results/people/?keywords=${qR}` },
-            { name: "LinkedIn — azienda",     url: `https://www.linkedin.com/search/results/companies/?keywords=${qR}` },
-            { name: "Facebook — pubblico",    url: `https://www.facebook.com/search/top/?q=${qR}` },
-          ]
-        },
-        {
-          label: "⚖️ Fonti Legali e Giudiziarie",
-          links: [
-            { name: "Gazzetta Ufficiale — atti",          url: `https://www.gazzettaufficiale.it/ricerca/anteprima/ricercaTestoGU?query=${q}` },
-            { name: "Il Fallimentarista — procedure",     url: `https://www.ilfallimentarista.it/ricerca?q=${qR}` },
-            { name: "Portale Tribunali",                  url: `https://portaletribunali.giustizia.it` },
-            { name: "Aste giudiziarie — pvp.giustizia",  url: `https://pvp.giustizia.it/pvp/it/list_aste.wp` },
-          ]
-        },
-        {
-          label: "🏠 Beni e Patrimonio",
-          links: [
-            { name: "Agenzia Entrate — catasto",     url: `https://www.agenziaentrate.gov.it/portale/web/guest/schede/altri-servizi/consultazione-banche-dati-catastali` },
-            { name: "Agenzia Entrate — ipoteche",    url: `https://www.agenziaentrate.gov.it/portale/web/guest/schede/altri-servizi/ispezione-ipotecaria` },
-          ]
-        },
-      ];
+async function loadReports() {
+  try {
+    const id = await getOrCreateGist();
+    const g  = await fetch("https://api.github.com/gists/" + id, {
+      headers: { Authorization: "token " + GH_TOKEN }
+    }).then(r => r.json());
+    const raw = g.files?.[GIST_FILE]?.content || '{"reports":[]}';
+    return JSON.parse(raw).reports || [];
+  } catch { return []; }
+}
+
+async function saveReports(reports) {
+  try {
+    const id = await getOrCreateGist();
+    await fetch("https://api.github.com/gists/" + id, {
+      method: "PATCH",
+      headers: { Authorization: "token " + GH_TOKEN, "Content-Type": "application/json" },
+      body: JSON.stringify({ files: { [GIST_FILE]: { content: JSON.stringify({ reports }) } } })
+    });
+    return true;
+  } catch { return false; }
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
+const SOURCES = [
+  { id: "cciaa",     name: "Registro Imprese / CCIAA", cost: "~€7-15" },
+  { id: "inipec",    name: "IniPEC / PEC ufficiali",   cost: "Gratuito" },
+  { id: "linkedin",  name: "LinkedIn",                 cost: "Gratuito" },
+  { id: "gazzetta",  name: "Gazzetta Ufficiale",       cost: "Gratuito" },
+  { id: "tribunali", name: "Tribunali / Fallimenti",   cost: "Gratuito" },
+  { id: "cerved",    name: "Cerved / CRIF",            cost: "€50-200" },
+];
+
+function buildLinks(data) {
+  const isP = data.tab === "persona";
+  const q   = encodeURIComponent(`"${isP ? data.nome + " " + data.cognome : data.ragione}"`);
+  const qR  = encodeURIComponent(isP ? data.nome + " " + data.cognome : data.ragione);
+  const qCf = encodeURIComponent(data.cf || qR);
+  return [
+    { label: "🔍 Motori di ricerca", links: [
+      { name: "Google — menzioni web",     url: `https://www.google.com/search?q=${q}` },
+      { name: "Google News — notizie",     url: `https://news.google.com/search?q=${q}&hl=it` },
+      { name: "Google — segnali negativi", url: `https://www.google.com/search?q=${q}+%22protesto%22+%22truffa%22+%22inadempiente%22` },
+    ]},
+    { label: "🏢 Registro Imprese", links: [
+      { name: "Registro Imprese",          url: `https://www.registroimprese.it/ricerca-libera?q=${q}` },
+      { name: "Telemaco InfoCamere",       url: `https://www.telemaco.infocamere.it` },
+      { name: "OpenCorporates — Italia",   url: `https://opencorporates.com/search?q=${qR}&jurisdiction_code=it` },
+    ]},
+    { label: "📋 PEC e Contatti", links: [
+      { name: "IniPEC — PEC ufficiale",    url: `https://www.inipec.gov.it/cerca-pec/-/pec/impresa?cf=${qCf}` },
+      { name: "Pagine Gialle",             url: `https://www.paginegialle.it/ricerca?qs=${qR}` },
+      { name: "Pagine Bianche",            url: `https://www.paginebianche.it/ricerca?qs=${qR}` },
+    ]},
+    { label: "💼 Profili Professionali", links: [
+      { name: "LinkedIn — persona",        url: `https://www.linkedin.com/search/results/people/?keywords=${qR}` },
+      { name: "LinkedIn — azienda",        url: `https://www.linkedin.com/search/results/companies/?keywords=${qR}` },
+      { name: "Facebook — pubblico",       url: `https://www.facebook.com/search/top/?q=${qR}` },
+    ]},
+    { label: "⚖️ Fonti Legali", links: [
+      { name: "Gazzetta Ufficiale",        url: `https://www.gazzettaufficiale.it/ricerca/anteprima/ricercaTestoGU?query=${q}` },
+      { name: "Il Fallimentarista",        url: `https://www.ilfallimentarista.it/ricerca?q=${qR}` },
+      { name: "Portale Tribunali",         url: `https://portaletribunali.giustizia.it` },
+      { name: "Aste giudiziarie",          url: `https://pvp.giustizia.it/pvp/it/list_aste.wp` },
+    ]},
+    { label: "🏠 Beni e Patrimonio", links: [
+      { name: "Agenzia Entrate — catasto", url: `https://www.agenziaentrate.gov.it/portale/web/guest/schede/altri-servizi/consultazione-banche-dati-catastali` },
+      { name: "Agenzia Entrate — ipoteche",url: `https://www.agenziaentrate.gov.it/portale/web/guest/schede/altri-servizi/ispezione-ipotecaria` },
+    ]},
+  ];
+}
+
+function generateSections(data) {
+  const isP  = data.tab === "persona";
+  const nome = isP ? (data.nome + " " + data.cognome).trim() : data.ragione;
+  const oggi = new Date().toLocaleDateString("it-IT");
+  return [
+    { title: "DOSSIER INVESTIGATIVO", content: [
+        "Data: " + oggi, "Soggetto: " + nome,
+        "Tipo: " + (isP ? "Persona Fisica" : "Persona Giuridica"),
+        isP && data.cf    ? "C.F.: "   + data.cf   : "",
+        isP && data.citta ? "Città: "  + data.citta : "",
+        !isP && data.piva ? "P.IVA: "  + data.piva  : "",
+        !isP && data.sede ? "Sede: "   + data.sede  : "",
+        "Contesto: " + (data.contesto || "Recupero crediti"),
+        data.note ? "Note: " + data.note : "",
+      ].filter(Boolean).join("\n")
+    },
+    { title: "1. PERCORSO DI RICERCA", content: isP
+      ? "STEP 1 — Registro Imprese: cariche societarie, partecipazioni\nSTEP 2 — LinkedIn: profilo professionale pubblico\nSTEP 3 — Google + News: menzioni, articoli, segnali negativi\nSTEP 4 — IniPEC: PEC se titolare d'impresa\nSTEP 5 — Gazzetta Ufficiale: procedure concorsuali\nSTEP 6 — Agenzia Entrate: visura ipotecaria e catastale"
+      : "STEP 1 — Registro Imprese: visura camerale (~€7-15)\nSTEP 2 — Telemaco InfoCamere: bilanci, protesti\nSTEP 3 — IniPEC: PEC per diffida formale\nSTEP 4 — Gazzetta Ufficiale: procedure concorsuali\nSTEP 5 — Il Fallimentarista: fallimenti dichiarati\nSTEP 6 — Cerved/CRIF: report creditizio (~€50-150)"
+    },
+    { title: "2. SEGNALI DI RISCHIO", content:
+      "• Protesti → CCIAA locale o Telemaco InfoCamere\n• Fallimenti → Gazzetta Ufficiale + Il Fallimentarista\n• Ipoteche → Conservatoria RR.II. di competenza\n• Bilanci negativi → ultime 3 annualità Registro Imprese\n• Notizie negative → Google: \"truffa\" \"inadempiente\" \"protesto\"\n• Aste beni → pvp.giustizia.it"
+    },
+    { title: "3. ITER RECUPERO CREDITI", content: isP
+      ? "1. Verifica solvibilità: Registro Imprese + Agenzia Entrate\n2. Diffida stragiudiziale via PEC certificata\n3. Se non pagato entro 15gg → decreto ingiuntivo\n4. Con decreto esecutivo → pignoramento c/c bancario\n5. Pignoramento immobiliare se ci sono beni"
+      : "1. Analizza bilanci e visura camerale\n2. Verifica procedure concorsuali in corso\n3. Diffida via PEC ufficiale (inipec.gov.it)\n4. Se insoluto → decreto ingiuntivo + pignoramento\n5. Se in concordato → insinuazione al passivo"
+    },
+    { title: "4. CONTATTI UTILI", content:
+      "• Registro Imprese: registroimprese.it — Tel. 199.50.20.20\n• IniPEC: inipec.gov.it\n• Agenzia Entrate: agenziaentrate.gov.it — Tel. 848.800.444\n• Tribunale: giustizia.it/it/tribunali\n• Cerved: cerved.com — Tel. 02.77541"
+    },
+  ];
+}
+
+function exportPDF(report) {
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const pageW = doc.internal.pageSize.getWidth();
+  const margin = 15;
+  const maxW = pageW - margin * 2;
+  let y = 20;
+
+  const addText = (text, size, bold, color) => {
+    doc.setFontSize(size);
+    doc.setFont("helvetica", bold ? "bold" : "normal");
+    doc.setTextColor(...(color || [30, 30, 30]));
+    const lines = doc.splitTextToSize(text, maxW);
+    lines.forEach(line => {
+      if (y > 270) { doc.addPage(); y = 20; }
+      doc.text(line, margin, y);
+      y += size * 0.45;
+    });
+    y += 2;
+  };
+
+  doc.setFillColor(184, 48, 42);
+  doc.rect(0, 0, pageW, 14, "F");
+  doc.setFontSize(14);
+  doc.setFont("helvetica", "bold");
+  doc.setTextColor(255, 255, 255);
+  doc.text("LexTrace — Dossier Investigativo", margin, 10);
+  y = 24;
+
+  report.sections.forEach((s, i) => {
+    doc.setFillColor(i === 0 ? 26 : 46, 26, 26);
+    doc.rect(margin - 2, y - 5, maxW + 4, 8, "F");
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(245, 242, 235);
+    doc.text(s.title, margin, y);
+    y += 6;
+    addText(s.content, 9, false, [40, 40, 40]);
+    y += 3;
+  });
+
+  if (report.note) {
+    addText("NOTE PERSONALI", 10, true, [184, 48, 42]);
+    addText(report.note, 9, false);
+  }
+
+  const pages = doc.internal.getNumberOfPages();
+  for (let i = 1; i <= pages; i++) {
+    doc.setPage(i);
+    doc.setFontSize(7);
+    doc.setTextColor(150);
+    doc.text("LexTrace · Uso professionale riservato · GDPR Art. 6 · " + i + "/" + pages, margin, 290);
+  }
+
+  doc.save("LexTrace_" + (report.soggetto || "report").replace(/\s+/g, "_") + "_" + new Date().toISOString().slice(0,10) + ".pdf");
+}
+
+// ─── APP ──────────────────────────────────────────────────────────────────────
+function App() {
+  const [tab,      setTab]      = useState("persona");
+  const [nome,     setNome]     = useState("");
+  const [cognome,  setCognome]  = useState("");
+  const [cf,       setCf]       = useState("");
+  const [citta,    setCitta]    = useState("");
+  const [ragione,  setRagione]  = useState("");
+  const [piva,     setPiva]     = useState("");
+  const [sede,     setSede]     = useState("");
+  const [contesto, setContesto] = useState("");
+  const [note,     setNote]     = useState("");
+  const [sources,  setSources]  = useState(["cciaa","inipec","linkedin","gazzetta","tribunali"]);
+  const [view,     setView]     = useState("form");
+  const [reports,  setReports]  = useState([]);
+  const [saving,   setSaving]   = useState(false);
+  const [loading,  setLoading]  = useState(false);
+  const [msg,      setMsg]      = useState("");
+
+  useEffect(() => {
+    if (view === "archivio") {
+      setLoading(true);
+      loadReports().then(r => { setReports(r); setLoading(false); });
     }
+  }, [view]);
 
-    function generateDossier(data) {
-      const isP    = data.tab === "persona";
-      const nome   = isP ? `${data.nome} ${data.cognome}`.trim() : data.ragione;
-      const oggi   = new Date().toLocaleDateString("it-IT");
+  const toggleSrc = id => setSources(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
+  const data = { tab, nome, cognome, cf, citta, ragione, piva, sede, contesto, note, sources };
+  const soggetto = tab === "persona" ? (nome + " " + cognome).trim() : ragione;
+  const canSearch = tab === "persona" ? nome.trim().length > 0 : ragione.trim().length > 0;
+  const links    = view === "links"   ? buildLinks(data) : null;
+  const sections = view === "dossier" ? generateSections(data) : null;
 
-      return [
-        {
-          title: "DOSSIER INVESTIGATIVO DIGITALE",
-          content: [
-            `Data: ${oggi}`,
-            `Soggetto: ${nome}`,
-            `Tipologia: ${isP ? "Persona Fisica" : "Persona Giuridica"}`,
-            isP && data.cf   ? `Cod. Fiscale: ${data.cf}`   : "",
-            isP && data.citta ? `Città: ${data.citta}`       : "",
-            !isP && data.piva ? `Partita IVA: ${data.piva}`  : "",
-            !isP && data.sede ? `Sede: ${data.sede}`         : "",
-            `Contesto: ${data.contesto || "Recupero crediti"}`,
-          ].filter(Boolean).join("\n")
-        },
-        {
-          title: "1. PERCORSO DI RICERCA CONSIGLIATO",
-          content: isP
-            ? `STEP 1 — Registro Imprese (registroimprese.it)
-   Verifica cariche societarie, partecipazioni, ruoli da amministratore
+  const handleSave = async () => {
+    setSaving(true); setMsg("");
+    const report = {
+      id: Date.now(), data: new Date().toLocaleString("it-IT"),
+      soggetto, tab, contesto: contesto || "Recupero crediti", note,
+      sections: generateSections(data), links: buildLinks(data),
+    };
+    const existing = await loadReports();
+    const ok = await saveReports([report, ...existing]);
+    setMsg(ok ? "✅ Salvato in archivio!" : "❌ Errore salvataggio");
+    setSaving(false);
+    setTimeout(() => setMsg(""), 3000);
+  };
 
-STEP 2 — LinkedIn (linkedin.com)
-   Controlla profilo professionale, datore di lavoro attuale
+  const inp = { width:"100%", padding:"9px 12px", border:"1px solid #ccc", borderRadius:3, fontFamily:"monospace", fontSize:"0.82rem", background:"#fafaf8", outline:"none" };
+  const lbl = { display:"block", fontSize:"0.6rem", textTransform:"uppercase", letterSpacing:"0.08em", color:"#888", marginBottom:5 };
+  const btn = (bg, disabled) => ({ padding:"12px 0", background: disabled ? "#ccc" : bg, color:"#fff", border:"none", borderRadius:3, cursor: disabled ? "not-allowed" : "pointer", fontFamily:"monospace", fontSize:"0.75rem", textTransform:"uppercase", letterSpacing:"0.05em", width:"100%" });
 
-STEP 3 — Google + Google News
-   Cerca menzioni esatte tra virgolette. Aggiungi: "protesto" "inadempiente"
+  return (
+    <div style={{ background:"#f5f2eb", minHeight:"100vh", padding:"28px 20px" }}>
+      <div style={{ maxWidth:800, margin:"0 auto" }}>
 
-STEP 4 — IniPEC (inipec.gov.it)
-   Recupera PEC ufficiale se titolare/socio di impresa
-
-STEP 5 — Gazzetta Ufficiale (gazzettaufficiale.it)
-   Procedure concorsuali, fallimenti personali
-
-STEP 6 — Agenzia Entrate (sportello fisico)
-   Visura ipotecaria e catastale con codice fiscale`
-            : `STEP 1 — Registro Imprese (registroimprese.it)
-   Visura camerale: soci, capitale, cariche, oggetto sociale (~€7-15)
-
-STEP 2 — Telemaco InfoCamere (telemaco.infocamere.it)
-   Bilanci depositati, protesti, pregiudizievoli
-
-STEP 3 — IniPEC (inipec.gov.it)
-   PEC ufficiale per invio diffida formale certificata
-
-STEP 4 — Gazzetta Ufficiale (gazzettaufficiale.it)
-   Procedure concorsuali, concordati, liquidazioni coatte
-
-STEP 5 — Il Fallimentarista (ilfallimentarista.it)
-   Fallimenti dichiarati, procedure aperte
-
-STEP 6 — Cerved o CRIF (cerved.com)
-   Report creditizio professionale completo (~€50-150)`
-        },
-        {
-          title: "2. SEGNALI DI RISCHIO DA VERIFICARE",
-          content: `• Protesti cambiari → CCIAA locale o Telemaco InfoCamere
-• Procedure fallimentari → Gazzetta Ufficiale + Il Fallimentarista
-• Pignoramenti e ipoteche → Conservatoria RR.II. di competenza
-• Bilanci negativi → ultime 3 annualità su Registro Imprese
-• Notizie negative → Google con "truffa" "inadempiente" "protesto"
-• Aste giudiziarie beni → pvp.giustizia.it`
-        },
-        {
-          title: "3. ITER RECUPERO CREDITI",
-          content: isP
-            ? `1. Verifica solvibilità: Registro Imprese + beni immobili (Agenzia Entrate)
-2. Invia diffida stragiudiziale via PEC certificata
-3. Se non pagato entro 15 giorni → ricorso per decreto ingiuntivo
-4. Con decreto esecutivo → pignoramento presso terzi (c/c bancario)
-5. Pignoramento immobiliare se ci sono beni intestati
-6. Per importi < €5.000 → Giudice di Pace (procedura semplificata)`
-            : `1. Analizza bilanci e visura camerale per valutare solvibilità
-2. Verifica se in procedura concorsuale (GU + Il Fallimentarista)
-3. Invia diffida via PEC ufficiale (cerca su inipec.gov.it)
-4. Se insoluto → decreto ingiuntivo + pignoramento crediti/conti
-5. Se in concordato → insinuazione al passivo tramite avvocato
-6. Per importi elevati → agenzia recupero crediti certificata`
-        },
-        {
-          title: "4. CONTATTI UTILI",
-          content: `• Registro Imprese: www.registroimprese.it — Tel. 199.50.20.20
-• IniPEC: www.inipec.gov.it
-• Agenzia Entrate: www.agenziaentrate.gov.it — Tel. 848.800.444
-• Tribunale competente: www.giustizia.it/it/tribunali
-• Cerved: www.cerved.com — Tel. 02.77541`
-        }
-      ];
-    }
-
-    function App() {
-      const [tab,      setTab]      = useState("persona");
-      const [nome,     setNome]     = useState("");
-      const [cognome,  setCognome]  = useState("");
-      const [cf,       setCf]       = useState("");
-      const [citta,    setCitta]    = useState("");
-      const [ragione,  setRagione]  = useState("");
-      const [piva,     setPiva]     = useState("");
-      const [sede,     setSede]     = useState("");
-      const [contesto, setContesto] = useState("");
-      const [sources,  setSources]  = useState(["cciaa","inipec","linkedin","gazzetta","tribunali"]);
-      const [view,     setView]     = useState(null);
-
-      const toggleSrc = (id) =>
-        setSources(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
-
-      const data       = { tab, nome, cognome, cf, citta, ragione, piva, sede, contesto, sources };
-      const canSearch  = tab === "persona" ? nome.trim().length > 0 : ragione.trim().length > 0;
-      const links      = view === "links"   ? buildLinks(data)   : null;
-      const dossier    = view === "dossier" ? generateDossier(data) : null;
-
-      const inp = { width:"100%", padding:"9px 12px", border:"1px solid #ccc", borderRadius:3, fontFamily:"monospace", fontSize:"0.82rem", background:"#fafaf8", outline:"none" };
-      const lbl = { display:"block", fontSize:"0.6rem", textTransform:"uppercase", letterSpacing:"0.08em", color:"#888", marginBottom:5 };
-
-      return (
-        <div style={{ background:"#f5f2eb", minHeight:"100vh", padding:"28px 20px" }}>
-          <div style={{ maxWidth:780, margin:"0 auto" }}>
-
-            {/* Header */}
-            <div style={{ borderBottom:"2px solid #1a1a1a", paddingBottom:16, marginBottom:28 }}>
-              <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", flexWrap:"wrap", gap:8 }}>
-                <div>
-                  <h1 style={{ fontFamily:"Georgia,serif", fontSize:"2.2rem", lineHeight:1 }}>
-                    Lex<span style={{ color:"#b8302a" }}>Trace</span>
-                  </h1>
-                  <p style={{ fontSize:"0.65rem", color:"#888", marginTop:5, textTransform:"uppercase", letterSpacing:"0.06em" }}>
-                    Ricerca investigativa digitale · Fonti pubbliche italiane
-                  </p>
-                </div>
-                <div style={{ background:"#1a1a1a", color:"#f5f2eb", fontSize:"0.58rem", padding:"4px 12px", borderRadius:2, letterSpacing:"0.08em", textTransform:"uppercase", marginTop:4 }}>
-                  GDPR Art. 6 · Uso professionale
-                </div>
-              </div>
+        {/* Header */}
+        <div style={{ borderBottom:"2px solid #1a1a1a", paddingBottom:16, marginBottom:24 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:8 }}>
+            <div>
+              <h1 style={{ fontFamily:"Georgia,serif", fontSize:"2.2rem", lineHeight:1 }}>Lex<span style={{ color:"#b8302a" }}>Trace</span></h1>
+              <p style={{ fontSize:"0.65rem", color:"#888", marginTop:5, textTransform:"uppercase", letterSpacing:"0.06em" }}>Ricerca investigativa · Fonti pubbliche italiane</p>
             </div>
+            <div style={{ display:"flex", gap:8 }}>
+              <button onClick={()=>setView("form")} style={{ ...btn(view==="form"?"#1a1a1a":"#e8e4dc", false), color: view==="form"?"#fff":"#555", width:"auto", padding:"7px 16px" }}>🔍 Ricerca</button>
+              <button onClick={()=>setView("archivio")} style={{ ...btn(view==="archivio"?"#1a1a1a":"#e8e4dc", false), color: view==="archivio"?"#fff":"#555", width:"auto", padding:"7px 16px" }}>📁 Archivio</button>
+            </div>
+          </div>
+        </div>
 
+        {/* FORM / LINKS / DOSSIER */}
+        {view !== "archivio" && (
+          <>
             {/* Tabs */}
             <div style={{ display:"flex", borderBottom:"1px solid #ccc", marginBottom:20 }}>
-              {[["persona","👤 Persona fisica"],["azienda","🏢 Azienda / Società"]].map(([t,label]) => (
-                <button key={t} onClick={() => { setTab(t); setView(null); }} style={{
+              {[["persona","👤 Persona fisica"],["azienda","🏢 Azienda"]].map(([t,l]) => (
+                <button key={t} onClick={()=>{ setTab(t); setView("form"); }} style={{
                   background:"none", border:"none", marginBottom:-1, cursor:"pointer", fontFamily:"monospace",
                   borderBottom: tab===t ? "2px solid #b8302a" : "2px solid transparent",
                   padding:"9px 20px", fontSize:"0.72rem", textTransform:"uppercase",
-                  color: tab===t ? "#1a1a1a" : "#888", letterSpacing:"0.05em"
-                }}>{label}</button>
+                  color: tab===t ? "#1a1a1a" : "#888",
+                }}>{l}</button>
               ))}
             </div>
 
@@ -240,28 +297,30 @@ STEP 6 — Cerved o CRIF (cerved.com)
             <div style={{ background:"#fff", border:"1px solid #d8d4cc", borderRadius:4, padding:22, marginBottom:16 }}>
               <div style={{ fontSize:"0.6rem", textTransform:"uppercase", color:"#aaa", letterSpacing:"0.1em", marginBottom:16, paddingBottom:8, borderBottom:"1px solid #eee" }}>Dati soggetto</div>
               {tab === "persona" ? (
-                <>
-                  <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:12 }}>
-                    <div><label style={lbl}>Nome *</label><input style={inp} value={nome} onChange={e=>setNome(e.target.value)} placeholder="Mario" /></div>
-                    <div><label style={lbl}>Cognome</label><input style={inp} value={cognome} onChange={e=>setCognome(e.target.value)} placeholder="Rossi" /></div>
-                    <div><label style={lbl}>Codice Fiscale</label><input style={inp} value={cf} onChange={e=>setCf(e.target.value)} placeholder="RSSMRA80A01H501U" /></div>
-                    <div><label style={lbl}>Città / Zona</label><input style={inp} value={citta} onChange={e=>setCitta(e.target.value)} placeholder="Milano" /></div>
-                  </div>
-                  <div><label style={lbl}>Contesto / Importo</label><input style={inp} value={contesto} onChange={e=>setContesto(e.target.value)} placeholder="es. recupero credito €15.000" /></div>
-                </>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+                  <div><label style={lbl}>Nome *</label><input style={inp} value={nome} onChange={e=>setNome(e.target.value)} placeholder="Mario" /></div>
+                  <div><label style={lbl}>Cognome</label><input style={inp} value={cognome} onChange={e=>setCognome(e.target.value)} placeholder="Rossi" /></div>
+                  <div><label style={lbl}>Codice Fiscale</label><input style={inp} value={cf} onChange={e=>setCf(e.target.value)} placeholder="RSSMRA80A01H501U" /></div>
+                  <div><label style={lbl}>Città</label><input style={inp} value={citta} onChange={e=>setCitta(e.target.value)} placeholder="Milano" /></div>
+                  <div style={{ gridColumn:"1/-1" }}><label style={lbl}>Contesto</label><input style={inp} value={contesto} onChange={e=>setContesto(e.target.value)} placeholder="es. recupero credito €15.000" /></div>
+                </div>
               ) : (
                 <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
                   <div><label style={lbl}>Ragione Sociale *</label><input style={inp} value={ragione} onChange={e=>setRagione(e.target.value)} placeholder="Rossi Srl" /></div>
                   <div><label style={lbl}>Partita IVA</label><input style={inp} value={piva} onChange={e=>setPiva(e.target.value)} placeholder="01234567890" /></div>
-                  <div><label style={lbl}>Sede Legale</label><input style={inp} value={sede} onChange={e=>setSede(e.target.value)} placeholder="Via Roma 1, Milano" /></div>
-                  <div><label style={lbl}>Contesto / Importo</label><input style={inp} value={contesto} onChange={e=>setContesto(e.target.value)} placeholder="es. recupero credito €50.000" /></div>
+                  <div><label style={lbl}>Sede</label><input style={inp} value={sede} onChange={e=>setSede(e.target.value)} placeholder="Via Roma 1, Milano" /></div>
+                  <div><label style={lbl}>Contesto</label><input style={inp} value={contesto} onChange={e=>setContesto(e.target.value)} placeholder="es. recupero credito €50.000" /></div>
                 </div>
               )}
+              <div style={{ marginTop:12 }}>
+                <label style={lbl}>Note personali</label>
+                <textarea style={{ ...inp, resize:"vertical" }} rows={2} value={note} onChange={e=>setNote(e.target.value)} placeholder="Informazioni aggiuntive, comportamenti noti, precedenti..." />
+              </div>
             </div>
 
             {/* Fonti */}
             <div style={{ background:"#fff", border:"1px solid #d8d4cc", borderRadius:4, padding:22, marginBottom:16 }}>
-              <div style={{ fontSize:"0.6rem", textTransform:"uppercase", color:"#aaa", letterSpacing:"0.1em", marginBottom:14, paddingBottom:8, borderBottom:"1px solid #eee" }}>Fonti da interrogare</div>
+              <div style={{ fontSize:"0.6rem", textTransform:"uppercase", color:"#aaa", letterSpacing:"0.1em", marginBottom:14, paddingBottom:8, borderBottom:"1px solid #eee" }}>Fonti</div>
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
                 {SOURCES.map(s => (
                   <div key={s.id} onClick={()=>toggleSrc(s.id)} style={{
@@ -282,36 +341,24 @@ STEP 6 — Cerved o CRIF (cerved.com)
               </div>
             </div>
 
-            {/* Buttons */}
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:24 }}>
-              <button onClick={()=>setView("links")} disabled={!canSearch} style={{
-                padding:14, background: canSearch ? "#b8302a" : "#ccc", color:"#fff",
-                border:"none", borderRadius:3, cursor: canSearch ? "pointer" : "not-allowed",
-                fontFamily:"monospace", fontSize:"0.78rem", textTransform:"uppercase", letterSpacing:"0.05em"
-              }}>🔗 Apri link di ricerca</button>
-              <button onClick={()=>setView("dossier")} disabled={!canSearch} style={{
-                padding:14, background: canSearch ? "#1a1a1a" : "#ccc", color:"#fff",
-                border:"none", borderRadius:3, cursor: canSearch ? "pointer" : "not-allowed",
-                fontFamily:"monospace", fontSize:"0.78rem", textTransform:"uppercase", letterSpacing:"0.05em"
-              }}>📄 Genera dossier PDF</button>
+            {/* Action buttons */}
+            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:20 }}>
+              <button onClick={()=>setView("links")} disabled={!canSearch} style={btn("#b8302a", !canSearch)}>🔗 Link di ricerca</button>
+              <button onClick={()=>setView("dossier")} disabled={!canSearch} style={btn("#1a1a1a", !canSearch)}>📄 Genera dossier</button>
             </div>
 
             {/* LINKS */}
             {view === "links" && links && (
               <div>
-                <div style={{ fontSize:"0.65rem", textTransform:"uppercase", letterSpacing:"0.1em", color:"#888", marginBottom:16 }}>
-                  Link precompilati per: <strong style={{ color:"#1a1a1a" }}>{tab==="persona" ? `${nome} ${cognome}` : ragione}</strong>
+                <div style={{ fontSize:"0.65rem", color:"#888", marginBottom:14, textTransform:"uppercase", letterSpacing:"0.08em" }}>
+                  Link per: <strong style={{ color:"#1a1a1a" }}>{soggetto}</strong>
                 </div>
                 {links.map((group, gi) => (
-                  <div key={gi} style={{ background:"#fff", border:"1px solid #d8d4cc", borderRadius:4, marginBottom:12, overflow:"hidden" }}>
-                    <div style={{ background:"#2e2e2e", color:"#f5f2eb", padding:"9px 16px", fontSize:"0.65rem", textTransform:"uppercase", letterSpacing:"0.1em" }}>
-                      {group.label}
-                    </div>
+                  <div key={gi} style={{ background:"#fff", border:"1px solid #d8d4cc", borderRadius:4, marginBottom:10, overflow:"hidden" }}>
+                    <div style={{ background:"#2e2e2e", color:"#f5f2eb", padding:"9px 16px", fontSize:"0.65rem", textTransform:"uppercase", letterSpacing:"0.1em" }}>{group.label}</div>
                     {group.links.map((link, li) => (
                       <a key={li} href={link.url} target="_blank" rel="noopener noreferrer"
-                        style={{ display:"flex", alignItems:"center", justifyContent:"space-between",
-                          padding:"10px 16px", borderBottom: li < group.links.length-1 ? "1px solid #f0ede6" : "none",
-                          background:"#fff", color:"inherit" }}
+                        style={{ display:"flex", justifyContent:"space-between", padding:"10px 16px", background:"#fff", color:"inherit", borderBottom: li < group.links.length-1 ? "1px solid #f0ede6" : "none" }}
                         onMouseEnter={e=>e.currentTarget.style.background="#fff8f8"}
                         onMouseLeave={e=>e.currentTarget.style.background="#fff"}
                       >
@@ -321,40 +368,79 @@ STEP 6 — Cerved o CRIF (cerved.com)
                     ))}
                   </div>
                 ))}
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginTop:8 }}>
+                  <button onClick={handleSave} disabled={saving} style={btn("#2e7d32", saving)}>{saving ? "Salvataggio..." : "💾 Salva in archivio"}</button>
+                  <button onClick={()=>exportPDF({ soggetto, sections: generateSections(data), note })} style={btn("#b8302a", false)}>📥 Scarica PDF</button>
+                </div>
+                {msg && <div style={{ marginTop:8, fontSize:"0.78rem", color: msg.includes("✅") ? "#2e7d32" : "#b8302a" }}>{msg}</div>}
               </div>
             )}
 
             {/* DOSSIER */}
-            {view === "dossier" && dossier && (
+            {view === "dossier" && sections && (
               <div>
-                {dossier.map((section, i) => (
+                {sections.map((s, i) => (
                   <div key={i} style={{ background:"#fff", border:"1px solid #d8d4cc", borderRadius:4, marginBottom:10, overflow:"hidden" }}>
-                    <div style={{ background: i===0 ? "#1a1a1a" : "#2e2e2e", color:"#f5f2eb", padding:"10px 18px", fontSize: i===0 ? "0.75rem" : "0.65rem", letterSpacing:"0.1em", textTransform:"uppercase" }}>
-                      {section.title}
-                    </div>
-                    <pre style={{ padding:"16px 18px", margin:0, whiteSpace:"pre-wrap", fontSize:"0.78rem", lineHeight:1.9, color:"#2a2a2a", fontFamily:"monospace" }}>
-                      {section.content}
-                    </pre>
+                    <div style={{ background: i===0 ? "#1a1a1a" : "#2e2e2e", color:"#f5f2eb", padding:"10px 18px", fontSize: i===0 ? "0.75rem" : "0.65rem", letterSpacing:"0.1em", textTransform:"uppercase" }}>{s.title}</div>
+                    <pre style={{ padding:"16px 18px", margin:0, whiteSpace:"pre-wrap", fontSize:"0.78rem", lineHeight:1.9, color:"#2a2a2a", fontFamily:"monospace" }}>{s.content}</pre>
                   </div>
                 ))}
-                <button onClick={()=>window.print()} style={{
-                  width:"100%", padding:13, background:"#1a1a1a", color:"#f5f2eb",
-                  border:"none", borderRadius:3, cursor:"pointer", fontFamily:"monospace",
-                  fontSize:"0.78rem", textTransform:"uppercase", letterSpacing:"0.06em", marginTop:4
-                }}>🖨 Stampa / Salva come PDF</button>
+                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginTop:4 }}>
+                  <button onClick={handleSave} disabled={saving} style={btn("#2e7d32", saving)}>{saving ? "Salvataggio..." : "💾 Salva in archivio"}</button>
+                  <button onClick={()=>exportPDF({ soggetto, sections, note })} style={btn("#b8302a", false)}>📥 Scarica PDF</button>
+                </div>
+                {msg && <div style={{ marginTop:8, fontSize:"0.78rem", color: msg.includes("✅") ? "#2e7d32" : "#b8302a" }}>{msg}</div>}
               </div>
             )}
+          </>
+        )}
 
-            <div style={{ marginTop:20, fontSize:"0.62rem", color:"#aaa", lineHeight:1.7, borderTop:"1px solid #ddd", paddingTop:12 }}>
-              <strong style={{ color:"#888" }}>⚖ Uso professionale riservato.</strong> Solo fonti pubbliche lecite. GDPR (Reg. UE 2016/679), art. 6.
-            </div>
+        {/* ARCHIVIO */}
+        {view === "archivio" && (
+          <div>
+            <div style={{ fontSize:"0.65rem", textTransform:"uppercase", color:"#888", marginBottom:20, letterSpacing:"0.08em" }}>Archivio report — sincronizzato su tutti i dispositivi</div>
+            {loading && <div style={{ color:"#888", fontSize:"0.8rem", padding:20 }}>Caricamento da GitHub Gist...</div>}
+            {!loading && reports.length === 0 && (
+              <div style={{ background:"#fff", border:"1px solid #d8d4cc", borderRadius:4, padding:48, textAlign:"center", color:"#bbb", fontSize:"0.75rem", textTransform:"uppercase", letterSpacing:"0.08em" }}>
+                Nessun report salvato
+              </div>
+            )}
+            {!loading && reports.map((r, i) => (
+              <div key={i} style={{ background:"#fff", border:"1px solid #d8d4cc", borderRadius:4, marginBottom:12, overflow:"hidden" }}>
+                <div style={{ background:"#1a1a1a", color:"#f5f2eb", padding:"12px 18px", display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:8 }}>
+                  <div>
+                    <div style={{ fontSize:"0.85rem", fontWeight:"bold" }}>{r.soggetto}</div>
+                    <div style={{ fontSize:"0.62rem", color:"#aaa", marginTop:2 }}>{r.contesto} · {r.data}</div>
+                  </div>
+                  <div style={{ display:"flex", gap:8 }}>
+                    <button onClick={()=>exportPDF(r)} style={{ background:"#b8302a", color:"#fff", border:"none", borderRadius:2, padding:"5px 12px", cursor:"pointer", fontFamily:"monospace", fontSize:"0.65rem", textTransform:"uppercase" }}>📥 PDF</button>
+                  </div>
+                </div>
+                {r.note && (
+                  <div style={{ padding:"10px 18px", background:"#fff8f0", borderBottom:"1px solid #f0e8d8", fontSize:"0.75rem", color:"#7a5a1a" }}>
+                    <strong>Note:</strong> {r.note}
+                  </div>
+                )}
+                <div style={{ padding:"14px 18px" }}>
+                  {r.sections && r.sections[0] && (
+                    <pre style={{ fontSize:"0.72rem", color:"#555", whiteSpace:"pre-wrap", fontFamily:"monospace", lineHeight:1.7 }}>{r.sections[0].content}</pre>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
-        </div>
-      );
-    }
+        )}
 
-    const root = ReactDOM.createRoot(document.getElementById("root"));
-    root.render(<App />);
-  </script>
+        <div style={{ marginTop:20, fontSize:"0.62rem", color:"#aaa", lineHeight:1.7, borderTop:"1px solid #ddd", paddingTop:12 }}>
+          <strong style={{ color:"#888" }}>⚖ Uso professionale riservato.</strong> Solo fonti pubbliche lecite. GDPR (Reg. UE 2016/679), art. 6.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(<App />);
+</script>
 </body>
 </html>
