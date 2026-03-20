@@ -71,6 +71,17 @@ const SOURCES = [
   { id: "cerved",    name: "Cerved / CRIF",            cost: "€50-200" },
 ];
 
+const CHECKLIST_ITEMS = [
+  { id: "pra",        label: "PRA — Auto/Moto intestati",         fonte: "ACI / PRA",             link: "https://www.aci.it/i-servizi/sportello-online/visura-pra.html" },
+  { id: "catasto",    label: "Catasto — Immobili intestati",      fonte: "Agenzia Entrate",        link: "https://www.agenziaentrate.gov.it/portale/web/guest/schede/altri-servizi/consultazione-banche-dati-catastali" },
+  { id: "ipoteche",   label: "Conservatoria — Ipoteche/Vincoli",  fonte: "Agenzia Entrate",        link: "https://www.agenziaentrate.gov.it/portale/web/guest/schede/altri-servizi/ispezione-ipotecaria" },
+  { id: "inps",       label: "INPS — Datore di lavoro/Reddito",   fonte: "INPS (tramite avvocato)", link: "https://www.inps.it" },
+  { id: "banca",      label: "Banca — Conti correnti",            fonte: "Pignoramento terzi",     link: "https://portaletribunali.giustizia.it" },
+  { id: "telefono",   label: "Telefono — Numeri di contatto",     fonte: "OSINT / Investigatore",  link: "https://www.google.com/search" },
+  { id: "registro",   label: "Registro Imprese — Cariche/Società",fonte: "Registro Imprese",       link: "https://www.registroimprese.it" },
+  { id: "gazzetta",   label: "Gazzetta Ufficiale — Procedure",    fonte: "Gazzetta Ufficiale",     link: "https://www.gazzettaufficiale.it" },
+];
+
 function buildLinks(data) {
   const isP = data.tab === "persona";
   const q   = encodeURIComponent(`"${isP ? data.nome + " " + data.cognome : data.ragione}"`);
@@ -103,9 +114,11 @@ function buildLinks(data) {
       { name: "Portale Tribunali",         url: `https://portaletribunali.giustizia.it` },
       { name: "Aste giudiziarie",          url: `https://pvp.giustizia.it/pvp/it/list_aste.wp` },
     ]},
-    { label: "🏠 Beni e Patrimonio", links: [
+    { label: "🚗 Veicoli e Patrimonio", links: [
+      { name: "ACI PRA — Visura veicoli",  url: `https://www.aci.it/i-servizi/sportello-online/visura-pra.html` },
       { name: "Agenzia Entrate — catasto", url: `https://www.agenziaentrate.gov.it/portale/web/guest/schede/altri-servizi/consultazione-banche-dati-catastali` },
       { name: "Agenzia Entrate — ipoteche",url: `https://www.agenziaentrate.gov.it/portale/web/guest/schede/altri-servizi/ispezione-ipotecaria` },
+      { name: "Aste giudiziarie beni",     url: `https://pvp.giustizia.it/pvp/it/list_aste.wp` },
     ]},
   ];
 }
@@ -130,15 +143,21 @@ function generateSections(data) {
       ? "STEP 1 — Registro Imprese: cariche societarie, partecipazioni\nSTEP 2 — LinkedIn: profilo professionale pubblico\nSTEP 3 — Google + News: menzioni, articoli, segnali negativi\nSTEP 4 — IniPEC: PEC se titolare d'impresa\nSTEP 5 — Gazzetta Ufficiale: procedure concorsuali\nSTEP 6 — Agenzia Entrate: visura ipotecaria e catastale"
       : "STEP 1 — Registro Imprese: visura camerale (~€7-15)\nSTEP 2 — Telemaco InfoCamere: bilanci, protesti\nSTEP 3 — IniPEC: PEC per diffida formale\nSTEP 4 — Gazzetta Ufficiale: procedure concorsuali\nSTEP 5 — Il Fallimentarista: fallimenti dichiarati\nSTEP 6 — Cerved/CRIF: report creditizio (~€50-150)"
     },
-    { title: "2. SEGNALI DI RISCHIO", content:
+    { title: "2. PATRIMONIO E BENI", content:
+      "VEICOLI (Auto/Moto):\n→ Visura PRA: aci.it/i-servizi/sportello-online/visura-pra.html\n→ Costo: ~€5 per targa o CF · Dati: intestatario, targa, modello\n→ Base legale: accessibile con CF anche prima del decreto\n\nIMMOBILI:\n→ Visura catastale: agenziaentrate.gov.it · Gratuita con CF\n→ Visura ipotecaria: agenziaentrate.gov.it · Mostra ipoteche e vincoli\n→ Conservatoria RR.II.: pignoramenti e trascrizioni\n\nCONTI CORRENTI:\n→ Solo con decreto ingiuntivo esecutivo\n→ Procedura: pignoramento presso terzi (banche)\n→ Il giudice ordina alla banca di bloccare e versare i fondi\n\nDATORE DI LAVORO / REDDITO:\n→ INPS tramite delega avvocato o CTU del tribunale\n→ Pignoramento quinto dello stipendio (max 1/5)\n→ Verifica buste paga tramite procedura esecutiva"
+    },
+    { title: "3. NUMERI DI TELEFONO", content:
+      "FONTI PUBBLICHE LECITE:\n→ Pagine Bianche: paginebianche.it (persone fisiche)\n→ Pagine Gialle: paginegialle.it (aziende)\n→ LinkedIn: profilo pubblico spesso contiene contatti\n→ Sito web aziendale: sezione 'Contatti'\n→ IniPEC: per la PEC ufficiale\n\nOSINT AVANZATO:\n→ Google: cerca nome + 'telefono' o 'contatto'\n→ Facebook pubblico: sezione Info\n→ Whitepages.it, Trovapersone.it\n\nINVESTIGATORE PRIVATO:\n→ Per numeri non rintracciabili pubblicamente\n→ Deve essere autorizzato (licenza TULPS art. 134)\n→ Associazione Italiana Investigatori Privati: aiip.it"
+    },
+    { title: "4. SEGNALI DI RISCHIO", content:
       "• Protesti → CCIAA locale o Telemaco InfoCamere\n• Fallimenti → Gazzetta Ufficiale + Il Fallimentarista\n• Ipoteche → Conservatoria RR.II. di competenza\n• Bilanci negativi → ultime 3 annualità Registro Imprese\n• Notizie negative → Google: \"truffa\" \"inadempiente\" \"protesto\"\n• Aste beni → pvp.giustizia.it"
     },
-    { title: "3. ITER RECUPERO CREDITI", content: isP
-      ? "1. Verifica solvibilità: Registro Imprese + Agenzia Entrate\n2. Diffida stragiudiziale via PEC certificata\n3. Se non pagato entro 15gg → decreto ingiuntivo\n4. Con decreto esecutivo → pignoramento c/c bancario\n5. Pignoramento immobiliare se ci sono beni"
-      : "1. Analizza bilanci e visura camerale\n2. Verifica procedure concorsuali in corso\n3. Diffida via PEC ufficiale (inipec.gov.it)\n4. Se insoluto → decreto ingiuntivo + pignoramento\n5. Se in concordato → insinuazione al passivo"
+    { title: "5. ITER RECUPERO CREDITI", content: isP
+      ? "1. Verifica veicoli intestati: PRA con CF (aci.it)\n2. Verifica immobili: visura catastale + ipotecaria\n3. Diffida stragiudiziale via PEC certificata\n4. Se non pagato entro 15gg → decreto ingiuntivo\n5. Con decreto esecutivo → pignoramento c/c bancario\n6. Pignoramento quinto stipendio (tramite INPS/datore)\n7. Pignoramento immobiliare o veicoli se necessario"
+      : "1. Visura camerale + bilanci (registroimprese.it)\n2. Verifica immobili aziendali: catasto + ipoteche\n3. Verifica veicoli aziendali: PRA con P.IVA\n4. Diffida via PEC ufficiale (inipec.gov.it)\n5. Se insoluto → decreto ingiuntivo + pignoramento\n6. Pignoramento crediti verso terzi (clienti dell'azienda)\n7. Se in concordato → insinuazione al passivo"
     },
-    { title: "4. CONTATTI UTILI", content:
-      "• Registro Imprese: registroimprese.it — Tel. 199.50.20.20\n• IniPEC: inipec.gov.it\n• Agenzia Entrate: agenziaentrate.gov.it — Tel. 848.800.444\n• Tribunale: giustizia.it/it/tribunali\n• Cerved: cerved.com — Tel. 02.77541"
+    { title: "6. CONTATTI UTILI", content:
+      "• ACI / PRA: aci.it — Tel. 803.116\n• Registro Imprese: registroimprese.it — Tel. 199.50.20.20\n• IniPEC: inipec.gov.it\n• Agenzia Entrate: agenziaentrate.gov.it — Tel. 848.800.444\n• INPS: inps.it — Tel. 803.164\n• Tribunale: giustizia.it/it/tribunali\n• Cerved: cerved.com — Tel. 02.77541\n• Investigatori privati: aiip.it"
     },
   ];
 }
@@ -166,6 +185,20 @@ function exportPDF(report) {
     doc.text(s.title, margin, y); y += 6;
     addText(s.content, 9, false, [40,40,40]); y += 3;
   });
+  // Checklist nel PDF
+  if (report.checklist && report.checklist.length > 0) {
+    doc.setFillColor(46,46,46); doc.rect(margin-2,y-5,maxW+4,8,"F");
+    doc.setFontSize(8); doc.setFont("helvetica","bold"); doc.setTextColor(245,242,235);
+    doc.text("CHECKLIST VERIFICHE", margin, y); y += 8;
+    report.checklist.forEach(item => {
+      if (y > 270) { doc.addPage(); y = 20; }
+      const stato = item.stato === "completato" ? "✓" : item.stato === "in_corso" ? "◎" : "○";
+      doc.setFontSize(9); doc.setFont("helvetica","normal"); doc.setTextColor(40,40,40);
+      doc.text(stato + " " + item.label + (item.note ? " — " + item.note : ""), margin, y);
+      y += 6;
+    });
+    y += 4;
+  }
   if (report.note) { addText("NOTE PERSONALI", 10, true, [184,48,42]); addText(report.note, 9, false); }
   const pages = doc.internal.getNumberOfPages();
   for (let i = 1; i <= pages; i++) {
@@ -177,12 +210,12 @@ function exportPDF(report) {
 
 // ─── MODAL MODIFICA ───────────────────────────────────────────────────────────
 function EditModal({ report, onSave, onClose }) {
-  const [soggetto,  setSoggetto]  = useState(report.soggetto || "");
-  const [contesto,  setContesto]  = useState(report.contesto || "");
-  const [note,      setNote]      = useState(report.note || "");
-  const [cf,        setCf]        = useState(report.cf || "");
-  const [piva,      setPiva]      = useState(report.piva || "");
-  const [sections,  setSections]  = useState(report.sections || []);
+  const [soggetto, setSoggetto] = useState(report.soggetto || "");
+  const [contesto, setContesto] = useState(report.contesto || "");
+  const [note,     setNote]     = useState(report.note || "");
+  const [cf,       setCf]       = useState(report.cf || "");
+  const [piva,     setPiva]     = useState(report.piva || "");
+  const [sections, setSections] = useState(report.sections || []);
 
   const updateSection = (i, val) => {
     const updated = [...sections];
@@ -200,97 +233,123 @@ function EditModal({ report, onSave, onClose }) {
           <h2 style={{ fontFamily:"Georgia,serif", fontSize:"1.3rem" }}>Modifica dossier</h2>
           <button onClick={onClose} style={{ background:"none", border:"none", fontSize:"1.2rem", cursor:"pointer", color:"#888" }}>✕</button>
         </div>
-
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:16 }}>
           <div><label style={lbl}>Soggetto</label><input style={inp} value={soggetto} onChange={e=>setSoggetto(e.target.value)} /></div>
           <div><label style={lbl}>Contesto</label><input style={inp} value={contesto} onChange={e=>setContesto(e.target.value)} /></div>
-          <div><label style={lbl}>Codice Fiscale</label><input style={inp} value={cf} onChange={e=>setCf(e.target.value)} placeholder="RSSMRA80A01H501U" /></div>
-          <div><label style={lbl}>Partita IVA</label><input style={inp} value={piva} onChange={e=>setPiva(e.target.value)} placeholder="01234567890" /></div>
+          <div><label style={lbl}>Codice Fiscale</label><input style={inp} value={cf} onChange={e=>setCf(e.target.value)} /></div>
+          <div><label style={lbl}>Partita IVA</label><input style={inp} value={piva} onChange={e=>setPiva(e.target.value)} /></div>
         </div>
-
         <div style={{ marginBottom:16 }}>
           <label style={lbl}>Note personali</label>
           <textarea style={{ ...inp, resize:"vertical" }} rows={3} value={note} onChange={e=>setNote(e.target.value)} />
         </div>
-
         {sections.map((s, i) => (
           <div key={i} style={{ marginBottom:12 }}>
             <div style={{ background:"#2e2e2e", color:"#f5f2eb", padding:"6px 12px", borderRadius:"3px 3px 0 0", fontSize:"0.62rem", textTransform:"uppercase", letterSpacing:"0.08em" }}>{s.title}</div>
-            <textarea
-              style={{ ...inp, borderRadius:"0 0 3px 3px", borderTop:"none", resize:"vertical" }}
-              rows={5}
-              value={s.content}
-              onChange={e=>updateSection(i, e.target.value)}
-            />
+            <textarea style={{ ...inp, borderRadius:"0 0 3px 3px", borderTop:"none", resize:"vertical" }} rows={5} value={s.content} onChange={e=>updateSection(i, e.target.value)} />
           </div>
         ))}
-
         <div style={{ display:"flex", gap:10, marginTop:8 }}>
-          <button onClick={()=>onSave({ ...report, soggetto, contesto, note, cf, piva, sections })} style={{ flex:1, padding:12, background:"#2e7d32", color:"#fff", border:"none", borderRadius:3, cursor:"pointer", fontFamily:"monospace", fontSize:"0.75rem", textTransform:"uppercase" }}>
-            💾 Salva modifiche
-          </button>
-          <button onClick={onClose} style={{ flex:1, padding:12, background:"#e8e4dc", color:"#555", border:"none", borderRadius:3, cursor:"pointer", fontFamily:"monospace", fontSize:"0.75rem", textTransform:"uppercase" }}>
-            Annulla
-          </button>
+          <button onClick={()=>onSave({ ...report, soggetto, contesto, note, cf, piva, sections })} style={{ flex:1, padding:12, background:"#2e7d32", color:"#fff", border:"none", borderRadius:3, cursor:"pointer", fontFamily:"monospace", fontSize:"0.75rem", textTransform:"uppercase" }}>💾 Salva modifiche</button>
+          <button onClick={onClose} style={{ flex:1, padding:12, background:"#e8e4dc", color:"#555", border:"none", borderRadius:3, cursor:"pointer", fontFamily:"monospace", fontSize:"0.75rem", textTransform:"uppercase" }}>Annulla</button>
         </div>
       </div>
     </div>
   );
 }
 
+// ─── CHECKLIST COMPONENT ──────────────────────────────────────────────────────
+function Checklist({ checklist, onChange }) {
+  const STATI = ["non_verificato", "in_corso", "completato", "non_trovato"];
+  const STATI_LABEL = { non_verificato: "○ Da verificare", in_corso: "◎ In corso", completato: "✓ Completato", non_trovato: "✗ Non trovato" };
+  const STATI_COLOR = { non_verificato: "#aaa", in_corso: "#e67e00", completato: "#2e7d32", non_trovato: "#b8302a" };
+
+  const updateItem = (id, field, val) => {
+    onChange(checklist.map(item => item.id === id ? { ...item, [field]: val } : item));
+  };
+
+  return (
+    <div>
+      {checklist.map(item => (
+        <div key={item.id} style={{ background:"#fff", border:"1px solid #e0dcd4", borderRadius:4, padding:"12px 16px", marginBottom:8 }}>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:8 }}>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:"0.78rem", color:"#1a1a1a", fontWeight:"bold" }}>{item.label}</div>
+              <div style={{ fontSize:"0.62rem", color:"#aaa", marginTop:2 }}>Fonte: {item.fonte}</div>
+            </div>
+            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+              <a href={item.link} target="_blank" rel="noopener noreferrer" style={{ fontSize:"0.62rem", color:"#b8302a", textTransform:"uppercase", letterSpacing:"0.04em" }}>Apri →</a>
+              <select
+                value={item.stato}
+                onChange={e=>updateItem(item.id, "stato", e.target.value)}
+                style={{ border:"1px solid #ccc", borderRadius:3, padding:"4px 8px", fontFamily:"monospace", fontSize:"0.68rem", color: STATI_COLOR[item.stato], background:"#fafaf8", outline:"none" }}
+              >
+                {STATI.map(s => <option key={s} value={s}>{STATI_LABEL[s]}</option>)}
+              </select>
+            </div>
+          </div>
+          {/* Campo note per ogni voce */}
+          <input
+            placeholder="Note (es. 2 auto intestate, nessun immobile trovato...)"
+            value={item.note || ""}
+            onChange={e=>updateItem(item.id, "note", e.target.value)}
+            style={{ width:"100%", marginTop:8, padding:"6px 10px", border:"1px solid #e0dcd4", borderRadius:3, fontFamily:"monospace", fontSize:"0.72rem", background:"#fafaf8", outline:"none" }}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── APP ──────────────────────────────────────────────────────────────────────
 function App() {
-  const [tab,      setTab]      = useState("persona");
-  const [nome,     setNome]     = useState("");
-  const [cognome,  setCognome]  = useState("");
-  const [cf,       setCf]       = useState("");
-  const [citta,    setCitta]    = useState("");
-  const [ragione,  setRagione]  = useState("");
-  const [piva,     setPiva]     = useState("");
-  const [sede,     setSede]     = useState("");
-  const [contesto, setContesto] = useState("");
-  const [note,     setNote]     = useState("");
-  const [sources,  setSources]  = useState(["cciaa","inipec","linkedin","gazzetta","tribunali"]);
-  const [view,     setView]     = useState("form");
-  const [reports,  setReports]  = useState([]);
-  const [saving,   setSaving]   = useState(false);
-  const [loading,  setLoading]  = useState(false);
-  const [msg,      setMsg]      = useState("");
-  const [search,   setSearch]   = useState("");
-  const [editRep,  setEditRep]  = useState(null);
-  const [delConf,  setDelConf]  = useState(null);
+  const [tab,       setTab]       = useState("persona");
+  const [nome,      setNome]      = useState("");
+  const [cognome,   setCognome]   = useState("");
+  const [cf,        setCf]        = useState("");
+  const [citta,     setCitta]     = useState("");
+  const [ragione,   setRagione]   = useState("");
+  const [piva,      setPiva]      = useState("");
+  const [sede,      setSede]      = useState("");
+  const [contesto,  setContesto]  = useState("");
+  const [note,      setNote]      = useState("");
+  const [sources,   setSources]   = useState(["cciaa","inipec","linkedin","gazzetta","tribunali"]);
+  const [view,      setView]      = useState("form");
+  const [subview,   setSubview]   = useState("dossier");
+  const [reports,   setReports]   = useState([]);
+  const [saving,    setSaving]    = useState(false);
+  const [loading,   setLoading]   = useState(false);
+  const [msg,       setMsg]       = useState("");
+  const [search,    setSearch]    = useState("");
+  const [editRep,   setEditRep]   = useState(null);
+  const [delConf,   setDelConf]   = useState(null);
+  const [checklist, setChecklist] = useState(CHECKLIST_ITEMS.map(i => ({ ...i, stato: "non_verificato", note: "" })));
 
   useEffect(() => {
     if (view === "archivio") { setLoading(true); loadReports().then(r => { setReports(r); setLoading(false); }); }
   }, [view]);
 
   const toggleSrc = id => setSources(s => s.includes(id) ? s.filter(x => x !== id) : [...s, id]);
-  const data     = { tab, nome, cognome, cf, citta, ragione, piva, sede, contesto, note, sources };
-  const soggetto = tab === "persona" ? (nome + " " + cognome).trim() : ragione;
+  const data      = { tab, nome, cognome, cf, citta, ragione, piva, sede, contesto, note, sources };
+  const soggetto  = tab === "persona" ? (nome + " " + cognome).trim() : ragione;
   const canSearch = tab === "persona" ? nome.trim().length > 0 : ragione.trim().length > 0;
-  const links    = view === "links"   ? buildLinks(data) : null;
-  const sections = view === "dossier" ? generateSections(data) : null;
+  const links     = buildLinks(data);
+  const sections  = generateSections(data);
 
-  // Ricerca nell'archivio per nome o CF
   const filteredReports = reports.filter(r => {
     if (!search.trim()) return true;
     const q = search.toLowerCase().trim();
-    return (
-      (r.soggetto || "").toLowerCase().includes(q) ||
-      (r.cf       || "").toLowerCase().includes(q) ||
-      (r.piva     || "").toLowerCase().includes(q) ||
-      (r.contesto || "").toLowerCase().includes(q)
-    );
+    return (r.soggetto||"").toLowerCase().includes(q) || (r.cf||"").toLowerCase().includes(q) || (r.piva||"").toLowerCase().includes(q) || (r.contesto||"").toLowerCase().includes(q);
   });
 
-  const showMsg = (m) => { setMsg(m); setTimeout(() => setMsg(""), 3000); };
+  const showMsg = m => { setMsg(m); setTimeout(() => setMsg(""), 3000); };
 
   const handleSave = async () => {
     setSaving(true);
     const report = {
       id: Date.now(), data: new Date().toLocaleString("it-IT"),
       soggetto, tab, contesto: contesto || "Recupero crediti",
-      note, cf, piva, sections: generateSections(data), links: buildLinks(data),
+      note, cf, piva, sections, links, checklist,
     };
     const existing = await loadReports();
     const ok = await saveReports([report, ...existing]);
@@ -298,7 +357,7 @@ function App() {
     setSaving(false);
   };
 
-  const handleDelete = async (id) => {
+  const handleDelete = async id => {
     const updated = reports.filter(r => r.id !== id);
     const ok = await saveReports(updated);
     if (ok) { setReports(updated); showMsg("🗑 Report eliminato"); }
@@ -306,7 +365,7 @@ function App() {
     setDelConf(null);
   };
 
-  const handleEdit = async (updated) => {
+  const handleEdit = async updated => {
     const newList = reports.map(r => r.id === updated.id ? { ...updated, modificato: new Date().toLocaleString("it-IT") } : r);
     const ok = await saveReports(newList);
     if (ok) { setReports(newList); showMsg("✅ Modifiche salvate"); }
@@ -316,11 +375,11 @@ function App() {
 
   const inp = { width:"100%", padding:"9px 12px", border:"1px solid #ccc", borderRadius:3, fontFamily:"monospace", fontSize:"0.82rem", background:"#fafaf8", outline:"none" };
   const lbl = { display:"block", fontSize:"0.6rem", textTransform:"uppercase", letterSpacing:"0.08em", color:"#888", marginBottom:5 };
-  const btn = (bg, disabled) => ({ padding:"12px 0", background: disabled?"#ccc":bg, color:"#fff", border:"none", borderRadius:3, cursor:disabled?"not-allowed":"pointer", fontFamily:"monospace", fontSize:"0.75rem", textTransform:"uppercase", letterSpacing:"0.05em", width:"100%" });
+  const btn = (bg, disabled) => ({ padding:"12px 0", background:disabled?"#ccc":bg, color:"#fff", border:"none", borderRadius:3, cursor:disabled?"not-allowed":"pointer", fontFamily:"monospace", fontSize:"0.75rem", textTransform:"uppercase", letterSpacing:"0.05em", width:"100%" });
 
   return (
     <div style={{ background:"#f5f2eb", minHeight:"100vh", padding:"28px 20px" }}>
-      <div style={{ maxWidth:800, margin:"0 auto" }}>
+      <div style={{ maxWidth:820, margin:"0 auto" }}>
 
         {/* Header */}
         <div style={{ borderBottom:"2px solid #1a1a1a", paddingBottom:16, marginBottom:24 }}>
@@ -336,17 +395,12 @@ function App() {
           </div>
         </div>
 
-        {/* FORM / LINKS / DOSSIER */}
-        {view !== "archivio" && (
+        {/* FORM */}
+        {view === "form" && (
           <>
             <div style={{ display:"flex", borderBottom:"1px solid #ccc", marginBottom:20 }}>
               {[["persona","👤 Persona fisica"],["azienda","🏢 Azienda"]].map(([t,l]) => (
-                <button key={t} onClick={()=>{ setTab(t); setView("form"); }} style={{
-                  background:"none", border:"none", marginBottom:-1, cursor:"pointer", fontFamily:"monospace",
-                  borderBottom: tab===t ? "2px solid #b8302a" : "2px solid transparent",
-                  padding:"9px 20px", fontSize:"0.72rem", textTransform:"uppercase",
-                  color: tab===t ? "#1a1a1a" : "#888",
-                }}>{l}</button>
+                <button key={t} onClick={()=>setTab(t)} style={{ background:"none", border:"none", marginBottom:-1, cursor:"pointer", fontFamily:"monospace", borderBottom:tab===t?"2px solid #b8302a":"2px solid transparent", padding:"9px 20px", fontSize:"0.72rem", textTransform:"uppercase", color:tab===t?"#1a1a1a":"#888" }}>{l}</button>
               ))}
             </div>
 
@@ -374,17 +428,13 @@ function App() {
               </div>
             </div>
 
+            {/* Fonti */}
             <div style={{ background:"#fff", border:"1px solid #d8d4cc", borderRadius:4, padding:22, marginBottom:16 }}>
               <div style={{ fontSize:"0.6rem", textTransform:"uppercase", color:"#aaa", letterSpacing:"0.1em", marginBottom:14, paddingBottom:8, borderBottom:"1px solid #eee" }}>Fonti</div>
               <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
                 {SOURCES.map(s => (
-                  <div key={s.id} onClick={()=>toggleSrc(s.id)} style={{
-                    display:"flex", alignItems:"center", gap:10, padding:"9px 14px",
-                    border:"1px solid", borderRadius:3, cursor:"pointer",
-                    borderColor: sources.includes(s.id) ? "#b8302a" : "#ddd",
-                    background:  sources.includes(s.id) ? "#fff5f5" : "#fafaf8",
-                  }}>
-                    <div style={{ width:9, height:9, borderRadius:2, flexShrink:0, border:"1.5px solid", borderColor: sources.includes(s.id)?"#b8302a":"#ccc", background: sources.includes(s.id)?"#b8302a":"transparent" }} />
+                  <div key={s.id} onClick={()=>toggleSrc(s.id)} style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 14px", border:"1px solid", borderRadius:3, cursor:"pointer", borderColor:sources.includes(s.id)?"#b8302a":"#ddd", background:sources.includes(s.id)?"#fff5f5":"#fafaf8" }}>
+                    <div style={{ width:9, height:9, borderRadius:2, flexShrink:0, border:"1.5px solid", borderColor:sources.includes(s.id)?"#b8302a":"#ccc", background:sources.includes(s.id)?"#b8302a":"transparent" }} />
                     <div>
                       <div style={{ fontSize:"0.75rem", color:"#1a1a1a" }}>{s.name}</div>
                       <div style={{ fontSize:"0.6rem", color:"#aaa" }}>{s.cost}</div>
@@ -394,53 +444,74 @@ function App() {
               </div>
             </div>
 
-            <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:20 }}>
-              <button onClick={()=>setView("links")} disabled={!canSearch} style={btn("#b8302a", !canSearch)}>🔗 Link di ricerca</button>
-              <button onClick={()=>setView("dossier")} disabled={!canSearch} style={btn("#1a1a1a", !canSearch)}>📄 Genera dossier</button>
-            </div>
+            {/* Sub-tabs risultati */}
+            {canSearch && (
+              <>
+                <div style={{ display:"flex", borderBottom:"1px solid #ccc", marginBottom:16, gap:0 }}>
+                  {[["dossier","📄 Dossier"],["links","🔗 Link ricerca"],["checklist","✅ Checklist verifiche"]].map(([v,l]) => (
+                    <button key={v} onClick={()=>setSubview(v)} style={{ background:"none", border:"none", marginBottom:-1, cursor:"pointer", fontFamily:"monospace", borderBottom:subview===v?"2px solid #b8302a":"2px solid transparent", padding:"8px 16px", fontSize:"0.68rem", textTransform:"uppercase", color:subview===v?"#1a1a1a":"#888" }}>{l}</button>
+                  ))}
+                </div>
 
-            {/* LINKS */}
-            {view === "links" && links && (
-              <div>
-                <div style={{ fontSize:"0.65rem", color:"#888", marginBottom:14, textTransform:"uppercase" }}>Link per: <strong style={{ color:"#1a1a1a" }}>{soggetto}</strong></div>
-                {links.map((group, gi) => (
-                  <div key={gi} style={{ background:"#fff", border:"1px solid #d8d4cc", borderRadius:4, marginBottom:10, overflow:"hidden" }}>
-                    <div style={{ background:"#2e2e2e", color:"#f5f2eb", padding:"9px 16px", fontSize:"0.65rem", textTransform:"uppercase", letterSpacing:"0.1em" }}>{group.label}</div>
-                    {group.links.map((link, li) => (
-                      <a key={li} href={link.url} target="_blank" rel="noopener noreferrer"
-                        style={{ display:"flex", justifyContent:"space-between", padding:"10px 16px", background:"#fff", color:"inherit", borderBottom: li<group.links.length-1?"1px solid #f0ede6":"none" }}
-                        onMouseEnter={e=>e.currentTarget.style.background="#fff8f8"}
-                        onMouseLeave={e=>e.currentTarget.style.background="#fff"}
-                      >
-                        <span style={{ fontSize:"0.78rem", color:"#1a1a1a" }}>{link.name}</span>
-                        <span style={{ fontSize:"0.65rem", color:"#b8302a" }}>APRI →</span>
-                      </a>
+                {/* DOSSIER */}
+                {subview === "dossier" && (
+                  <div>
+                    {sections.map((s, i) => (
+                      <div key={i} style={{ background:"#fff", border:"1px solid #d8d4cc", borderRadius:4, marginBottom:10, overflow:"hidden" }}>
+                        <div style={{ background:i===0?"#1a1a1a":"#2e2e2e", color:"#f5f2eb", padding:"10px 18px", fontSize:i===0?"0.75rem":"0.65rem", letterSpacing:"0.1em", textTransform:"uppercase" }}>{s.title}</div>
+                        <pre style={{ padding:"16px 18px", margin:0, whiteSpace:"pre-wrap", fontSize:"0.78rem", lineHeight:1.9, color:"#2a2a2a", fontFamily:"monospace" }}>{s.content}</pre>
+                      </div>
                     ))}
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginTop:4 }}>
+                      <button onClick={handleSave} disabled={saving} style={btn("#2e7d32", saving)}>{saving?"Salvataggio...":"💾 Salva in archivio"}</button>
+                      <button onClick={()=>exportPDF({ soggetto, sections, checklist, note })} style={btn("#b8302a", false)}>📥 Scarica PDF</button>
+                    </div>
+                    {msg && <div style={{ marginTop:8, fontSize:"0.78rem", color:msg.includes("✅")?"#2e7d32":"#b8302a" }}>{msg}</div>}
                   </div>
-                ))}
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginTop:8 }}>
-                  <button onClick={handleSave} disabled={saving} style={btn("#2e7d32", saving)}>{saving?"Salvataggio...":"💾 Salva in archivio"}</button>
-                  <button onClick={()=>exportPDF({ soggetto, sections:generateSections(data), note })} style={btn("#b8302a", false)}>📥 Scarica PDF</button>
-                </div>
-                {msg && <div style={{ marginTop:8, fontSize:"0.78rem", color:msg.includes("✅")?"#2e7d32":"#b8302a" }}>{msg}</div>}
-              </div>
-            )}
+                )}
 
-            {/* DOSSIER */}
-            {view === "dossier" && sections && (
-              <div>
-                {sections.map((s, i) => (
-                  <div key={i} style={{ background:"#fff", border:"1px solid #d8d4cc", borderRadius:4, marginBottom:10, overflow:"hidden" }}>
-                    <div style={{ background:i===0?"#1a1a1a":"#2e2e2e", color:"#f5f2eb", padding:"10px 18px", fontSize:i===0?"0.75rem":"0.65rem", letterSpacing:"0.1em", textTransform:"uppercase" }}>{s.title}</div>
-                    <pre style={{ padding:"16px 18px", margin:0, whiteSpace:"pre-wrap", fontSize:"0.78rem", lineHeight:1.9, color:"#2a2a2a", fontFamily:"monospace" }}>{s.content}</pre>
+                {/* LINKS */}
+                {subview === "links" && (
+                  <div>
+                    <div style={{ fontSize:"0.65rem", color:"#888", marginBottom:14, textTransform:"uppercase" }}>Link per: <strong style={{ color:"#1a1a1a" }}>{soggetto}</strong></div>
+                    {links.map((group, gi) => (
+                      <div key={gi} style={{ background:"#fff", border:"1px solid #d8d4cc", borderRadius:4, marginBottom:10, overflow:"hidden" }}>
+                        <div style={{ background:"#2e2e2e", color:"#f5f2eb", padding:"9px 16px", fontSize:"0.65rem", textTransform:"uppercase", letterSpacing:"0.1em" }}>{group.label}</div>
+                        {group.links.map((link, li) => (
+                          <a key={li} href={link.url} target="_blank" rel="noopener noreferrer"
+                            style={{ display:"flex", justifyContent:"space-between", padding:"10px 16px", background:"#fff", color:"inherit", borderBottom:li<group.links.length-1?"1px solid #f0ede6":"none" }}
+                            onMouseEnter={e=>e.currentTarget.style.background="#fff8f8"}
+                            onMouseLeave={e=>e.currentTarget.style.background="#fff"}
+                          >
+                            <span style={{ fontSize:"0.78rem", color:"#1a1a1a" }}>{link.name}</span>
+                            <span style={{ fontSize:"0.65rem", color:"#b8302a" }}>APRI →</span>
+                          </a>
+                        ))}
+                      </div>
+                    ))}
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginTop:8 }}>
+                      <button onClick={handleSave} disabled={saving} style={btn("#2e7d32", saving)}>{saving?"Salvataggio...":"💾 Salva in archivio"}</button>
+                      <button onClick={()=>exportPDF({ soggetto, sections, checklist, note })} style={btn("#b8302a", false)}>📥 Scarica PDF</button>
+                    </div>
+                    {msg && <div style={{ marginTop:8, fontSize:"0.78rem", color:msg.includes("✅")?"#2e7d32":"#b8302a" }}>{msg}</div>}
                   </div>
-                ))}
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginTop:4 }}>
-                  <button onClick={handleSave} disabled={saving} style={btn("#2e7d32", saving)}>{saving?"Salvataggio...":"💾 Salva in archivio"}</button>
-                  <button onClick={()=>exportPDF({ soggetto, sections, note })} style={btn("#b8302a", false)}>📥 Scarica PDF</button>
-                </div>
-                {msg && <div style={{ marginTop:8, fontSize:"0.78rem", color:msg.includes("✅")?"#2e7d32":"#b8302a" }}>{msg}</div>}
-              </div>
+                )}
+
+                {/* CHECKLIST */}
+                {subview === "checklist" && (
+                  <div>
+                    <div style={{ fontSize:"0.65rem", color:"#888", marginBottom:14, textTransform:"uppercase" }}>
+                      Checklist verifiche per: <strong style={{ color:"#1a1a1a" }}>{soggetto}</strong>
+                    </div>
+                    <Checklist checklist={checklist} onChange={setChecklist} />
+                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginTop:12 }}>
+                      <button onClick={handleSave} disabled={saving} style={btn("#2e7d32", saving)}>{saving?"Salvataggio...":"💾 Salva in archivio"}</button>
+                      <button onClick={()=>exportPDF({ soggetto, sections, checklist, note })} style={btn("#b8302a", false)}>📥 Scarica PDF</button>
+                    </div>
+                    {msg && <div style={{ marginTop:8, fontSize:"0.78rem", color:msg.includes("✅")?"#2e7d32":"#b8302a" }}>{msg}</div>}
+                  </div>
+                )}
+              </>
             )}
           </>
         )}
@@ -448,72 +519,62 @@ function App() {
         {/* ARCHIVIO */}
         {view === "archivio" && (
           <div>
-            {/* Barra ricerca */}
             <div style={{ position:"relative", marginBottom:20 }}>
-              <input
-                style={{ ...inp, paddingLeft:36, fontSize:"0.85rem" }}
-                value={search}
-                onChange={e=>setSearch(e.target.value)}
-                placeholder="Cerca per nome, cognome, CF, P.IVA, contesto..."
-              />
-              <span style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", color:"#aaa", fontSize:"1rem" }}>🔍</span>
-              {search && <span onClick={()=>setSearch("")} style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)", cursor:"pointer", color:"#aaa", fontSize:"0.9rem" }}>✕</span>}
+              <input style={{ ...inp, paddingLeft:36, fontSize:"0.85rem" }} value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cerca per nome, CF, P.IVA, contesto..." />
+              <span style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", color:"#aaa" }}>🔍</span>
+              {search && <span onClick={()=>setSearch("")} style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)", cursor:"pointer", color:"#aaa" }}>✕</span>}
             </div>
-
             {msg && <div style={{ marginBottom:12, fontSize:"0.78rem", color:msg.includes("✅")||msg.includes("🗑")?"#2e7d32":"#b8302a", padding:"8px 12px", background:"#f0fff0", borderRadius:3 }}>{msg}</div>}
-
-            {loading && <div style={{ color:"#888", fontSize:"0.8rem", padding:20 }}>Caricamento da GitHub Gist...</div>}
-
+            {loading && <div style={{ color:"#888", fontSize:"0.8rem", padding:20 }}>Caricamento...</div>}
             {!loading && filteredReports.length === 0 && (
-              <div style={{ background:"#fff", border:"1px solid #d8d4cc", borderRadius:4, padding:48, textAlign:"center", color:"#bbb", fontSize:"0.75rem", textTransform:"uppercase", letterSpacing:"0.08em" }}>
-                {search ? "Nessun risultato per \"" + search + "\"" : "Nessun report salvato"}
+              <div style={{ background:"#fff", border:"1px solid #d8d4cc", borderRadius:4, padding:48, textAlign:"center", color:"#bbb", fontSize:"0.75rem", textTransform:"uppercase" }}>
+                {search ? `Nessun risultato per "${search}"` : "Nessun report salvato"}
               </div>
             )}
-
-            {!loading && filteredReports.map((r) => (
+            {!loading && filteredReports.map(r => (
               <div key={r.id} style={{ background:"#fff", border:"1px solid #d8d4cc", borderRadius:4, marginBottom:12, overflow:"hidden" }}>
-                {/* Card header */}
                 <div style={{ background:"#1a1a1a", color:"#f5f2eb", padding:"12px 18px" }}>
                   <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", flexWrap:"wrap", gap:8 }}>
                     <div>
                       <div style={{ fontSize:"0.88rem", fontWeight:"bold" }}>{r.soggetto}</div>
                       <div style={{ fontSize:"0.62rem", color:"#aaa", marginTop:3 }}>
-                        {r.tab === "persona" ? "👤 Persona fisica" : "🏢 Azienda"} · {r.contesto}
-                        {r.cf   && <span style={{ marginLeft:10, color:"#888" }}>CF: {r.cf}</span>}
-                        {r.piva && <span style={{ marginLeft:10, color:"#888" }}>P.IVA: {r.piva}</span>}
+                        {r.tab==="persona"?"👤 Persona":"🏢 Azienda"} · {r.contesto}
+                        {r.cf   && <span style={{ marginLeft:10 }}>CF: {r.cf}</span>}
+                        {r.piva && <span style={{ marginLeft:10 }}>P.IVA: {r.piva}</span>}
                       </div>
                       <div style={{ fontSize:"0.58rem", color:"#666", marginTop:2 }}>
-                        Creato: {r.data}{r.modificato ? " · Modificato: " + r.modificato : ""}
+                        {r.data}{r.modificato?" · Mod: "+r.modificato:""}
+                        {r.checklist && <span style={{ marginLeft:10 }}>· Verifiche: {r.checklist.filter(i=>i.stato==="completato").length}/{r.checklist.length} ✓</span>}
                       </div>
                     </div>
-                    {/* Azioni */}
-                    <div style={{ display:"flex", gap:6, flexShrink:0 }}>
-                      <button onClick={()=>exportPDF(r)} title="Scarica PDF" style={{ background:"#b8302a", color:"#fff", border:"none", borderRadius:2, padding:"5px 10px", cursor:"pointer", fontFamily:"monospace", fontSize:"0.62rem", textTransform:"uppercase" }}>📥 PDF</button>
-                      <button onClick={()=>setEditRep(r)} title="Modifica" style={{ background:"#1565c0", color:"#fff", border:"none", borderRadius:2, padding:"5px 10px", cursor:"pointer", fontFamily:"monospace", fontSize:"0.62rem", textTransform:"uppercase" }}>✏️ Modifica</button>
-                      <button onClick={()=>setDelConf(r.id)} title="Elimina" style={{ background:"#555", color:"#fff", border:"none", borderRadius:2, padding:"5px 10px", cursor:"pointer", fontFamily:"monospace", fontSize:"0.62rem", textTransform:"uppercase" }}>🗑 Elimina</button>
+                    <div style={{ display:"flex", gap:6 }}>
+                      <button onClick={()=>exportPDF(r)} style={{ background:"#b8302a", color:"#fff", border:"none", borderRadius:2, padding:"5px 10px", cursor:"pointer", fontFamily:"monospace", fontSize:"0.62rem", textTransform:"uppercase" }}>📥 PDF</button>
+                      <button onClick={()=>setEditRep(r)} style={{ background:"#1565c0", color:"#fff", border:"none", borderRadius:2, padding:"5px 10px", cursor:"pointer", fontFamily:"monospace", fontSize:"0.62rem", textTransform:"uppercase" }}>✏️ Modifica</button>
+                      <button onClick={()=>setDelConf(r.id)} style={{ background:"#555", color:"#fff", border:"none", borderRadius:2, padding:"5px 10px", cursor:"pointer", fontFamily:"monospace", fontSize:"0.62rem", textTransform:"uppercase" }}>🗑 Elimina</button>
                     </div>
                   </div>
                 </div>
-
-                {/* Note */}
-                {r.note && (
-                  <div style={{ padding:"10px 18px", background:"#fff8f0", borderBottom:"1px solid #f0e8d8", fontSize:"0.75rem", color:"#7a5a1a" }}>
-                    <strong>Note:</strong> {r.note}
+                {r.note && <div style={{ padding:"10px 18px", background:"#fff8f0", borderBottom:"1px solid #f0e8d8", fontSize:"0.75rem", color:"#7a5a1a" }}><strong>Note:</strong> {r.note}</div>}
+                {r.checklist && r.checklist.some(i=>i.stato!=="non_verificato") && (
+                  <div style={{ padding:"10px 18px", background:"#f8fff8", borderBottom:"1px solid #e0f0e0" }}>
+                    <div style={{ fontSize:"0.6rem", textTransform:"uppercase", color:"#aaa", marginBottom:6 }}>Verifiche</div>
+                    <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+                      {r.checklist.filter(i=>i.stato!=="non_verificato").map(i => (
+                        <span key={i.id} style={{ fontSize:"0.65rem", padding:"2px 8px", borderRadius:10, background: i.stato==="completato"?"#e8f5e9":i.stato==="in_corso"?"#fff3e0":"#ffebee", color: i.stato==="completato"?"#2e7d32":i.stato==="in_corso"?"#e67e00":"#b8302a" }}>
+                          {i.stato==="completato"?"✓":i.stato==="in_corso"?"◎":"✗"} {i.label.split("—")[0]}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                 )}
-
-                {/* Anteprima sezione 1 */}
                 <div style={{ padding:"12px 18px" }}>
-                  {r.sections?.[0] && (
-                    <pre style={{ fontSize:"0.72rem", color:"#555", whiteSpace:"pre-wrap", fontFamily:"monospace", lineHeight:1.7 }}>{r.sections[0].content}</pre>
-                  )}
+                  {r.sections?.[0] && <pre style={{ fontSize:"0.72rem", color:"#555", whiteSpace:"pre-wrap", fontFamily:"monospace", lineHeight:1.7 }}>{r.sections[0].content}</pre>}
                 </div>
               </div>
             ))}
-
             {!loading && reports.length > 0 && (
               <div style={{ fontSize:"0.62rem", color:"#aaa", textAlign:"center", marginTop:8 }}>
-                {filteredReports.length} di {reports.length} report{search ? " (filtrati)" : ""}
+                {filteredReports.length} di {reports.length} report{search?" (filtrati)":""}
               </div>
             )}
           </div>
@@ -524,15 +585,13 @@ function App() {
         </div>
       </div>
 
-      {/* MODAL MODIFICA */}
       {editRep && <EditModal report={editRep} onSave={handleEdit} onClose={()=>setEditRep(null)} />}
 
-      {/* CONFERMA ELIMINAZIONE */}
       {delConf && (
         <div className="overlay" onClick={()=>setDelConf(null)}>
           <div className="modal" style={{ maxWidth:380 }} onClick={e=>e.stopPropagation()}>
             <h3 style={{ fontFamily:"Georgia,serif", marginBottom:12 }}>Conferma eliminazione</h3>
-            <p style={{ fontSize:"0.82rem", color:"#555", marginBottom:20 }}>Sei sicuro di voler eliminare questo report? L'operazione non può essere annullata.</p>
+            <p style={{ fontSize:"0.82rem", color:"#555", marginBottom:20 }}>Sei sicuro? L'operazione non può essere annullata.</p>
             <div style={{ display:"flex", gap:10 }}>
               <button onClick={()=>handleDelete(delConf)} style={{ flex:1, padding:12, background:"#c62828", color:"#fff", border:"none", borderRadius:3, cursor:"pointer", fontFamily:"monospace", fontSize:"0.75rem", textTransform:"uppercase" }}>🗑 Elimina</button>
               <button onClick={()=>setDelConf(null)} style={{ flex:1, padding:12, background:"#e8e4dc", color:"#555", border:"none", borderRadius:3, cursor:"pointer", fontFamily:"monospace", fontSize:"0.75rem", textTransform:"uppercase" }}>Annulla</button>
