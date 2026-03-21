@@ -8,6 +8,7 @@
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { background: #f5f2eb; font-family: monospace; }
@@ -21,67 +22,36 @@
 <script type="text/babel">
 const { useState, useEffect } = React;
 
-// ─── GITHUB DB ────────────────────────────────────────────────────────────────
-const _t = ["ghp_peq9SGESb","uEJ0hlon96fe3","LygR66hU2DvoUo"];
-const GH_TOKEN = _t.join("");
-const OWNER = "bigtelemarketing";
-const REPO  = "lextrace";
-const BRANCH = "main";
-
-async function ghGet(path) {
-  try {
-    const r = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${path}?ref=${BRANCH}&t=${Date.now()}`, {
-      headers: { Authorization: "token " + GH_TOKEN, Accept: "application/vnd.github.v3+json" }
-    });
-    if (!r.ok) return { data: null, sha: null };
-    const j = await r.json();
-    const decoded = JSON.parse(decodeURIComponent(escape(atob(j.content.replace(/\n/g,"")))));
-    return { data: decoded, sha: j.sha };
-  } catch { return { data: null, sha: null }; }
-}
-
-async function ghPut(path, content, sha) {
-  try {
-    const body = {
-      message: "update " + path,
-      content: btoa(unescape(encodeURIComponent(JSON.stringify(content)))),
-      branch: BRANCH,
-    };
-    if (sha) body.sha = sha;
-    const r = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${path}`, {
-      method: "PUT",
-      headers: { Authorization: "token " + GH_TOKEN, "Content-Type": "application/json" },
-      body: JSON.stringify(body)
-    });
-    return r.ok;
-  } catch { return false; }
-}
-
-const PATH_REPORTS = "db/reports.json";
-const PATH_CLIENTI = "db/clienti.json";
-
-let _shaReports = null;
-let _shaClienti = null;
+// ─── SUPABASE ─────────────────────────────────────────────────────────────────
+const SB_URL = "https://fpvvtagszklzamwtpbjt.supabase.co";
+const SB_KEY = "sb_publishable_420Bi2d31EJp1sBlrQaUjw_ZrRugiYL";
+const sb = supabase.createClient(SB_URL, SB_KEY);
 
 async function loadReports() {
-  const { data, sha } = await ghGet(PATH_REPORTS);
-  _shaReports = sha;
-  return data?.reports || [];
+  const { data, error } = await sb.from("reports").select("*").order("id", { ascending: false });
+  if (error) { console.error(error); return []; }
+  return data || [];
 }
-async function saveReports(reports) {
-  const ok = await ghPut(PATH_REPORTS, { reports }, _shaReports);
-  if (ok) { const { sha } = await ghGet(PATH_REPORTS); _shaReports = sha; }
-  return ok;
+async function saveReport(report) {
+  const { error } = await sb.from("reports").upsert(report);
+  return !error;
+}
+async function deleteReport(id) {
+  const { error } = await sb.from("reports").delete().eq("id", id);
+  return !error;
 }
 async function loadClienti() {
-  const { data, sha } = await ghGet(PATH_CLIENTI);
-  _shaClienti = sha;
-  return data?.clienti || [];
+  const { data, error } = await sb.from("clienti").select("*").order("id", { ascending: false });
+  if (error) { console.error(error); return []; }
+  return data || [];
 }
-async function saveClienti(clienti) {
-  const ok = await ghPut(PATH_CLIENTI, { clienti }, _shaClienti);
-  if (ok) { const { sha } = await ghGet(PATH_CLIENTI); _shaClienti = sha; }
-  return ok;
+async function saveCliente(cliente) {
+  const { error } = await sb.from("clienti").upsert(cliente);
+  return !error;
+}
+async function deleteCliente(id) {
+  const { error } = await sb.from("clienti").delete().eq("id", id);
+  return !error;
 }
 
 // ─── COSTANTI ─────────────────────────────────────────────────────────────────
@@ -249,7 +219,7 @@ function exportPreventivoPDF(cliente,ordine) {
   doc.setFontSize(16);doc.setFont("helvetica","bold");doc.setTextColor(255,255,255);
   doc.text("LexTrace — Preventivo",margin,12);
   doc.setFontSize(9);doc.setFont("helvetica","normal");
-  doc.text("Rif. #"+ordine.id.toString().slice(-6),pageW-margin-35,12);
+  doc.text("Rif. #"+String(ordine.id).slice(-6),pageW-margin-35,12);
   let y=32;
   doc.setFontSize(10);doc.setFont("helvetica","bold");doc.setTextColor(30,30,30);
   doc.text("Cliente",margin,y);y+=6;
@@ -275,7 +245,6 @@ function exportPreventivoPDF(cliente,ordine) {
   doc.setFillColor(184,48,42);doc.rect(margin,y-4,maxW,9,"F");
   doc.setFontSize(10);doc.setFont("helvetica","bold");doc.setTextColor(255,255,255);
   doc.text("TOTALE",margin+2,y+1);doc.text("€"+ordine.totale,pageW-margin-20,y+1);y+=14;
-  if(ordine.note){doc.setFontSize(8);doc.setFont("helvetica","normal");doc.setTextColor(100,100,100);doc.text("Note: "+ordine.note,margin,y);}
   doc.setFontSize(7);doc.setTextColor(150);
   doc.text("LexTrace · "+new Date().toLocaleDateString("it-IT"),margin,287);
   doc.save("Preventivo_"+(cliente.nome||"cliente").replace(/\s+/g,"_")+"_"+new Date().toISOString().slice(0,10)+".pdf");
@@ -400,7 +369,7 @@ function ClienteModal({cliente,onSave,onClose}) {
         </div>
         <div style={{marginBottom:16}}><label style={lbl}>Note interne</label><textarea style={{...inp,resize:"vertical"}} rows={2} value={note} onChange={e=>setNote(e.target.value)}/></div>
         <div style={{display:"flex",gap:10}}>
-          <button onClick={()=>onSave({id:cliente?.id||Date.now(),nome,tipo,email,telefono,piva,cf,note,listino,creato:cliente?.creato||new Date().toLocaleString("it-IT")})}
+          <button onClick={()=>onSave({id:cliente?.id||Date.now(),nome,tipo,email,telefono,piva,cf,note,listino,ordini:cliente?.ordini||[],creato:cliente?.creato||new Date().toLocaleString("it-IT")})}
             disabled={!nome.trim()} style={{flex:1,padding:12,background:nome.trim()?"#1a1a1a":"#ccc",color:"#fff",border:"none",borderRadius:3,cursor:nome.trim()?"pointer":"not-allowed",fontFamily:"monospace",fontSize:"0.75rem",textTransform:"uppercase"}}>
             💾 Salva cliente
           </button>
@@ -568,53 +537,59 @@ function App() {
   const showMsg=m=>{setMsg(m);setTimeout(()=>setMsg(""),4000);};
 
   const handleSave=async()=>{
-    setSaving(true);showMsg("⏳ Salvataggio su GitHub...");
+    setSaving(true);showMsg("⏳ Salvataggio...");
     const report={id:Date.now(),data:new Date().toLocaleString("it-IT"),soggetto,tab,contesto:contesto||"Recupero crediti",note,cf,piva,sections,links,checklist};
-    const ex=await loadReports();
-    const ok=await saveReports([report,...ex]);
-    ok?showMsg("✅ Salvato! Visibile da qualsiasi PC."):showMsg("❌ Errore salvataggio");
-    if(ok)setReports([report,...ex]);
+    const ok=await saveReport(report);
+    if(ok){setReports(prev=>[report,...prev]);showMsg("✅ Salvato! Visibile da qualsiasi PC.");}
+    else showMsg("❌ Errore salvataggio");
     setSaving(false);
   };
 
   const handleDelReport=async id=>{
-    const u=reports.filter(r=>r.id!==id);
-    const ok=await saveReports(u);
-    if(ok){setReports(u);showMsg("🗑 Eliminato");}else showMsg("❌ Errore");
+    const ok=await deleteReport(id);
+    if(ok){setReports(prev=>prev.filter(r=>r.id!==id));showMsg("🗑 Eliminato");}else showMsg("❌ Errore");
     setDelConf(null);
   };
+
   const handleEditReport=async updated=>{
-    const nl=reports.map(r=>r.id===updated.id?{...updated,modificato:new Date().toLocaleString("it-IT")}:r);
-    const ok=await saveReports(nl);
-    if(ok){setReports(nl);showMsg("✅ Salvato");}else showMsg("❌ Errore");
+    updated.modificato=new Date().toLocaleString("it-IT");
+    const ok=await saveReport(updated);
+    if(ok){setReports(prev=>prev.map(r=>r.id===updated.id?updated:r));showMsg("✅ Salvato");}else showMsg("❌ Errore");
     setEditRep(null);
   };
+
   const handleSaveCl=async c=>{
     const isNew=!editCl;
-    const u=isNew?[c,...clienti]:clienti.map(x=>x.id===c.id?c:x);
-    const ok=await saveClienti(u);
-    if(ok){setClienti(u);showMsg(isNew?"✅ Cliente aggiunto!":"✅ Cliente aggiornato!");}else showMsg("❌ Errore");
+    const ok=await saveCliente(c);
+    if(ok){
+      setClienti(prev=>isNew?[c,...prev]:prev.map(x=>x.id===c.id?c:x));
+      showMsg(isNew?"✅ Cliente aggiunto!":"✅ Cliente aggiornato!");
+    }else showMsg("❌ Errore");
     setNewCl(false);setEditCl(null);
   };
+
   const handleDelCl=async id=>{
-    const u=clienti.filter(c=>c.id!==id);
-    const ok=await saveClienti(u);
-    if(ok){setClienti(u);showMsg("🗑 Cliente eliminato");}else showMsg("❌ Errore");
+    const ok=await deleteCliente(id);
+    if(ok){setClienti(prev=>prev.filter(c=>c.id!==id));showMsg("🗑 Cliente eliminato");}else showMsg("❌ Errore");
     setDelClConf(null);
   };
+
   const handleSaveOrdine=async ordine=>{
-    const u=clienti.map(c=>c.id===ordineFor.id?{...c,ordini:[ordine,...(c.ordini||[])]}:c);
-    const ok=await saveClienti(u);
-    if(ok){setClienti(u);showMsg("✅ Ordine creato!");}else showMsg("❌ Errore");
+    const cliente=clienti.find(c=>c.id===ordineFor.id);
+    const updated={...cliente,ordini:[ordine,...(cliente.ordini||[])]};
+    const ok=await saveCliente(updated);
+    if(ok){setClienti(prev=>prev.map(c=>c.id===updated.id?updated:c));showMsg("✅ Ordine creato!");}else showMsg("❌ Errore");
     setOrdineFor(null);
   };
+
   const handleStatoPag=async(cid,oid,stato)=>{
-    const u=clienti.map(c=>c.id===cid?{...c,ordini:(c.ordini||[]).map(o=>o.id===oid?{...o,stato}:o)}:c);
-    const ok=await saveClienti(u);
-    if(ok){setClienti(u);}else showMsg("❌ Errore");
+    const cliente=clienti.find(c=>c.id===cid);
+    const updated={...cliente,ordini:(cliente.ordini||[]).map(o=>o.id===oid?{...o,stato}:o)};
+    const ok=await saveCliente(updated);
+    if(ok){setClienti(prev=>prev.map(c=>c.id===updated.id?updated:c));}else showMsg("❌ Errore");
   };
 
-  const inp={width:"100%",padding:"9px 12px",border:"1px solid #ccc",borderRadius:3,fontFamily:"monospace",fontSize:"0.82rem",background:"#fafaf8",outline:"none"};
+  const inp={width:"100%",padding:"9px 12px",border:"1px solid #ccc",borderRadius:3,fontFamily:"monospace",fontSize:"0.82rem",background:"#fafal8",outline:"none"};
   const lbl={display:"block",fontSize:"0.6rem",textTransform:"uppercase",letterSpacing:"0.08em",color:"#888",marginBottom:5};
   const btnS=(bg,dis)=>({padding:"12px 0",background:dis?"#ccc":bg,color:"#fff",border:"none",borderRadius:3,cursor:dis?"not-allowed":"pointer",fontFamily:"monospace",fontSize:"0.75rem",textTransform:"uppercase",width:"100%"});
   const navBtn=(v,label)=><button onClick={()=>setView(v)} style={{background:view===v?"#1a1a1a":"#e8e4dc",color:view===v?"#fff":"#555",border:"none",borderRadius:3,padding:"7px 14px",cursor:"pointer",fontFamily:"monospace",fontSize:"0.68rem",textTransform:"uppercase"}}>{label}</button>;
@@ -624,11 +599,12 @@ function App() {
   return(
     <div style={{background:"#f5f2eb",minHeight:"100vh",padding:"28px 20px"}}>
       <div style={{maxWidth:860,margin:"0 auto"}}>
+
         <div style={{borderBottom:"2px solid #1a1a1a",paddingBottom:16,marginBottom:24}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
             <div>
               <h1 style={{fontFamily:"Georgia,serif",fontSize:"2.2rem",lineHeight:1}}>Lex<span style={{color:"#b8302a"}}>Trace</span></h1>
-              <p style={{fontSize:"0.65rem",color:"#888",marginTop:5,textTransform:"uppercase",letterSpacing:"0.06em"}}>Ricerca investigativa · Dati salvati su GitHub</p>
+              <p style={{fontSize:"0.65rem",color:"#888",marginTop:5,textTransform:"uppercase",letterSpacing:"0.06em"}}>Ricerca investigativa · Dati sincronizzati su cloud</p>
             </div>
             <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
               {navBtn("form","🔍 Ricerca")}
@@ -667,6 +643,7 @@ function App() {
               )}
               <div style={{marginTop:12}}><label style={lbl}>Note personali</label><textarea style={{...inp,resize:"vertical"}} rows={2} value={note} onChange={e=>setNote(e.target.value)} placeholder="Informazioni aggiuntive..."/></div>
             </div>
+
             <div style={{background:"#fff",border:"1px solid #d8d4cc",borderRadius:4,padding:22,marginBottom:16}}>
               <div style={{fontSize:"0.6rem",textTransform:"uppercase",color:"#aaa",letterSpacing:"0.1em",marginBottom:14,paddingBottom:8,borderBottom:"1px solid #eee"}}>Fonti</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
@@ -678,6 +655,7 @@ function App() {
                 ))}
               </div>
             </div>
+
             {canSearch&&(
               <>
                 <div style={{display:"flex",borderBottom:"1px solid #ccc",marginBottom:16}}>
@@ -685,6 +663,7 @@ function App() {
                     <button key={v} onClick={()=>setSubview(v)} style={{background:"none",border:"none",marginBottom:-1,cursor:"pointer",fontFamily:"monospace",borderBottom:subview===v?"2px solid #b8302a":"2px solid transparent",padding:"8px 16px",fontSize:"0.68rem",textTransform:"uppercase",color:subview===v?"#1a1a1a":"#888"}}>{l}</button>
                   ))}
                 </div>
+
                 {subview==="dossier"&&(
                   <div>
                     {sections.map((s,i)=>(
@@ -699,6 +678,7 @@ function App() {
                     </div>
                   </div>
                 )}
+
                 {subview==="links"&&(
                   <div>
                     {links.map((group,gi)=>(
@@ -721,6 +701,7 @@ function App() {
                     </div>
                   </div>
                 )}
+
                 {subview==="checklist"&&(
                   <div>
                     <Checklist checklist={checklist} onChange={setChecklist}/>
@@ -742,7 +723,7 @@ function App() {
               <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"#aaa"}}>🔍</span>
               {searchR&&<span onClick={()=>setSearchR("")} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",cursor:"pointer",color:"#aaa"}}>✕</span>}
             </div>
-            {loading&&<div style={{textAlign:"center",padding:40,color:"#888"}}>⏳ Caricamento da GitHub...</div>}
+            {loading&&<div style={{textAlign:"center",padding:40,color:"#888"}}>⏳ Caricamento...</div>}
             {!loading&&filtR.length===0&&<div style={{background:"#fff",border:"1px solid #d8d4cc",borderRadius:4,padding:48,textAlign:"center",color:"#bbb",fontSize:"0.75rem",textTransform:"uppercase"}}>{searchR?`Nessun risultato per "${searchR}"`:"Nessun report salvato"}</div>}
             {!loading&&filtR.map(r=>(
               <div key={r.id} style={{background:"#fff",border:"1px solid #d8d4cc",borderRadius:4,marginBottom:12,overflow:"hidden"}}>
@@ -789,8 +770,8 @@ function App() {
               </div>
               <button onClick={()=>setNewCl(true)} style={{padding:"9px 20px",background:"#1a1a1a",color:"#fff",border:"none",borderRadius:3,cursor:"pointer",fontFamily:"monospace",fontSize:"0.72rem",textTransform:"uppercase",whiteSpace:"nowrap"}}>+ Nuovo cliente</button>
             </div>
-            {loading&&<div style={{textAlign:"center",padding:40,color:"#888"}}>⏳ Caricamento da GitHub...</div>}
-            {!loading&&filtC.length===0&&<div style={{background:"#fff",border:"1px solid #d8d4cc",borderRadius:4,padding:48,textAlign:"center",color:"#bbb",fontSize:"0.75rem",textTransform:"uppercase"}}>{searchC?`Nessun cliente per "${searchC}"`:"Nessun cliente. Clicca + Nuovo cliente."}</div>}
+            {loading&&<div style={{textAlign:"center",padding:40,color:"#888"}}>⏳ Caricamento...</div>}
+            {!loading&&filtC.length===0&&<div style={{background:"#fff",border:"1px solid #d8d4cc",borderRadius:4,padding:48,textAlign:"center",color:"#bbb",fontSize:"0.75rem",textTransform:"uppercase"}}>{searchC?`Nessun cliente per "${searchC}"`:"Nessun cliente."}</div>}
             {!loading&&filtC.map(c=>(
               <div key={c.id} style={{background:"#fff",border:"1px solid #d8d4cc",borderRadius:4,marginBottom:12,overflow:"hidden"}}>
                 <div style={{padding:"14px 18px",borderBottom:expandCl===c.id?"1px solid #eee":"none"}}>
@@ -837,7 +818,7 @@ function App() {
                       <div key={o.id} style={{border:"1px solid #e8e4dc",borderRadius:3,marginBottom:8,overflow:"hidden"}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 14px",background:"#fafaf8",flexWrap:"wrap",gap:6}}>
                           <div>
-                            <span style={{fontSize:"0.75rem",color:"#1a1a1a",fontWeight:"bold"}}>Ordine #{o.id.toString().slice(-6)}</span>
+                            <span style={{fontSize:"0.75rem",color:"#1a1a1a",fontWeight:"bold"}}>Ordine #{String(o.id).slice(-6)}</span>
                             <span style={{fontSize:"0.62rem",color:"#888",marginLeft:10}}>{o.data}</span>
                           </div>
                           <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -868,7 +849,7 @@ function App() {
         )}
 
         <div style={{marginTop:20,fontSize:"0.62rem",color:"#aaa",lineHeight:1.7,borderTop:"1px solid #ddd",paddingTop:12}}>
-          <strong style={{color:"#888"}}>⚖ Uso professionale riservato.</strong> Solo fonti pubbliche lecite. GDPR Art. 6. · Dati salvati su GitHub.
+          <strong style={{color:"#888"}}>⚖ Uso professionale riservato.</strong> Solo fonti pubbliche lecite. GDPR Art. 6. · Dati salvati su Supabase.
         </div>
       </div>
 
