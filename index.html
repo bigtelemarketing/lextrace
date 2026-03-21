@@ -26,39 +26,59 @@ const SB_URL = "https://fpvvtagszklzamwtpbjt.supabase.co";
 const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZwdnZ0YWdzemtsemFtd3RwYmp0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxMDQzODEsImV4cCI6MjA4OTY4MDM4MX0.cfddzqRfpQ2QMoJlXNvm28ntjadoWxrInq5bIX_nYbI";
 const sb = supabase.createClient(SB_URL, SB_KEY);
 
-async function signIn(email, password) {
-  const { data, error } = await sb.auth.signInWithPassword({ email, password });
-  return { user: data?.user || null, error: error?.message || null };
+const USERS_URL = "https://raw.githubusercontent.com/bigtelemarketing/lextrace/main/users.json";
+const SESSION_KEY = "lextrace_session";
+
+// ─── AUTH con users.json ──────────────────────────────────────────────────────
+async function fetchUsers() {
+  try {
+    const r = await fetch(USERS_URL + "?t=" + Date.now());
+    return await r.json();
+  } catch { return []; }
 }
-async function signOut() { await sb.auth.signOut(); }
-async function getProfilo(userId) {
-  try { const { data } = await sb.from("profili").select("*").eq("id", userId).single(); return data; }
+
+async function loginUser(email, password) {
+  const users = await fetchUsers();
+  const user = users.find(u => u.email === email && u.password === password);
+  if(user) {
+    localStorage.setItem(SESSION_KEY, JSON.stringify(user));
+    return { user, error: null };
+  }
+  return { user: null, error: "Email o password non validi" };
+}
+
+function getSession() {
+  try { return JSON.parse(localStorage.getItem(SESSION_KEY)); }
   catch { return null; }
 }
-async function getAllUtenti() {
-  const { data } = await sb.from("profili").select("*").order("email");
+
+function logoutUser() {
+  localStorage.removeItem(SESSION_KEY);
+}
+
+// ─── DB Supabase ──────────────────────────────────────────────────────────────
+async function loadReports(userId, isAdmin) {
+  let q = sb.from("reports").select("*").order("id", { ascending: false });
+  if(!isAdmin) q = q.eq("user_id", userId);
+  const { data } = await q;
   return data || [];
 }
-async function loadReports() {
-  const { data } = await sb.from("reports").select("*").order("id", { ascending: false });
-  return data || [];
-}
-async function saveReport(report) {
-  const { data: { user } } = await sb.auth.getUser();
-  const { error } = await sb.from("reports").upsert({ ...report, user_id: user.id });
+async function saveReport(report, userId) {
+  const { error } = await sb.from("reports").upsert({ ...report, user_id: userId });
   return !error;
 }
 async function deleteReport(id) {
   const { error } = await sb.from("reports").delete().eq("id", id);
   return !error;
 }
-async function loadClienti() {
-  const { data } = await sb.from("clienti").select("*").order("id", { ascending: false });
+async function loadClienti(userId, isAdmin) {
+  let q = sb.from("clienti").select("*").order("id", { ascending: false });
+  if(!isAdmin) q = q.eq("user_id", userId);
+  const { data } = await q;
   return data || [];
 }
-async function saveCliente(cliente) {
-  const { data: { user } } = await sb.auth.getUser();
-  const { error } = await sb.from("clienti").upsert({ ...cliente, user_id: user.id });
+async function saveCliente(cliente, userId) {
+  const { error } = await sb.from("clienti").upsert({ ...cliente, user_id: userId });
   return !error;
 }
 async function deleteCliente(id) {
@@ -66,6 +86,7 @@ async function deleteCliente(id) {
   return !error;
 }
 
+// ─── COSTANTI ─────────────────────────────────────────────────────────────────
 const SOURCES = [
   { id:"cciaa",     name:"Registro Imprese / CCIAA", cost:"~€7-15" },
   { id:"inipec",    name:"IniPEC / PEC ufficiali",   cost:"Gratuito" },
@@ -255,6 +276,7 @@ function exportPreventivoPDF(cliente,ordine) {
   doc.save("Preventivo_"+(cliente.nome||"cliente").replace(/\s+/g,"_")+"_"+new Date().toISOString().slice(0,10)+".pdf");
 }
 
+// ─── LOGIN ────────────────────────────────────────────────────────────────────
 function LoginPage({onLogin}) {
   const [email,setEmail]=useState("");
   const [password,setPassword]=useState("");
@@ -262,8 +284,8 @@ function LoginPage({onLogin}) {
   const [error,setError]=useState("");
   const handle=async(e)=>{
     e.preventDefault();setLoading(true);setError("");
-    const {user,error}=await signIn(email,password);
-    if(user){onLogin(user);}else{setError(error||"Credenziali non valide");}
+    const {user,error}=await loginUser(email,password);
+    if(user){onLogin(user);}else{setError(error);}
     setLoading(false);
   };
   return(
@@ -287,7 +309,7 @@ function LoginPage({onLogin}) {
             </div>
             {error&&<div style={{background:"#3a1a1a",border:"1px solid #b8302a",borderRadius:4,padding:"10px 14px",marginBottom:16,fontSize:"0.78rem",color:"#ff6b6b"}}>⚠ {error}</div>}
             <button type="submit" disabled={loading} style={{width:"100%",padding:13,background:loading?"#555":"#b8302a",color:"#fff",border:"none",borderRadius:4,cursor:loading?"not-allowed":"pointer",fontFamily:"monospace",fontSize:"0.82rem",textTransform:"uppercase",letterSpacing:"0.06em"}}>
-              {loading?"Accesso in corso...":"Accedi →"}
+              {loading?"Verifica credenziali...":"Accedi →"}
             </button>
           </div>
         </form>
@@ -297,132 +319,50 @@ function LoginPage({onLogin}) {
   );
 }
 
+// ─── PANNELLO UTENTI ADMIN ────────────────────────────────────────────────────
 function AdminUtenti({onClose}) {
   const [utenti,setUtenti]=useState([]);
   const [loading,setLoading]=useState(true);
-  const [showNew,setShowNew]=useState(false);
-  const [newEmail,setNewEmail]=useState("");
-  const [newPass,setNewPass]=useState("");
-  const [newNome,setNewNome]=useState("");
-  const [newRuolo,setNewRuolo]=useState("utente");
-  const [saving,setSaving]=useState(false);
-  const [msg,setMsg]=useState("");
 
-  useEffect(()=>{ getAllUtenti().then(u=>{setUtenti(u);setLoading(false);}); },[]);
-
-  const showMsg=m=>{setMsg(m);setTimeout(()=>setMsg(""),3000);};
-
-  // ─── FIX: usa signUp invece di admin.createUser ───────────────────────────
-  const handleCreate=async()=>{
-    if(!newEmail||!newPass||!newNome)return;
-    setSaving(true);
-
-    // Salva la sessione admin corrente
-    const { data: { session: adminSession } } = await sb.auth.getSession();
-
-    // Crea nuovo utente con signUp
-    const { data, error } = await sb.auth.signUp({
-      email: newEmail,
-      password: newPass,
-    });
-
-    if(error){ showMsg("❌ "+error.message); setSaving(false); return; }
-
-    const userId = data.user?.id;
-    if(!userId){ showMsg("❌ Errore creazione utente"); setSaving(false); return; }
-
-    // Inserisce il profilo
-    const { error: profErr } = await sb.from("profili").insert({
-      id: userId,
-      email: newEmail,
-      nome: newNome,
-      ruolo: newRuolo
-    });
-
-    if(profErr){ showMsg("❌ Errore profilo: "+profErr.message); setSaving(false); return; }
-
-    // Ripristina la sessione admin (signUp potrebbe cambiarla)
-    if(adminSession) {
-      await sb.auth.setSession({
-        access_token: adminSession.access_token,
-        refresh_token: adminSession.refresh_token,
-      });
-    }
-
-    setUtenti(prev=>[...prev,{id:userId,email:newEmail,nome:newNome,ruolo:newRuolo}]);
-    setShowNew(false);setNewEmail("");setNewPass("");setNewNome("");setNewRuolo("utente");
-    showMsg("✅ Utente creato!");
-    setSaving(false);
-  };
-
-  const handleRuolo=async(id,ruolo)=>{
-    await sb.from("profili").update({ruolo}).eq("id",id);
-    setUtenti(prev=>prev.map(u=>u.id===id?{...u,ruolo}:u));
-    showMsg("✅ Ruolo aggiornato");
-  };
-
-  const inp={width:"100%",padding:"8px 10px",border:"1px solid #ccc",borderRadius:3,fontFamily:"monospace",fontSize:"0.8rem",background:"#fafaf8",outline:"none"};
-  const lbl={display:"block",fontSize:"0.6rem",textTransform:"uppercase",color:"#888",marginBottom:4};
+  useEffect(()=>{
+    fetchUsers().then(u=>{setUtenti(u);setLoading(false);});
+  },[]);
 
   return(
     <div className="overlay" onClick={onClose}>
       <div className="modal" style={{maxWidth:700}} onClick={e=>e.stopPropagation()}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,borderBottom:"2px solid #1a1a1a",paddingBottom:12}}>
-          <h2 style={{fontFamily:"Georgia,serif",fontSize:"1.3rem"}}>👑 Gestione Utenti</h2>
+          <h2 style={{fontFamily:"Georgia,serif",fontSize:"1.3rem"}}>👑 Utenti registrati</h2>
           <button onClick={onClose} style={{background:"none",border:"none",fontSize:"1.2rem",cursor:"pointer"}}>✕</button>
         </div>
-        {msg&&<div style={{marginBottom:14,padding:"8px 12px",background:msg.includes("✅")?"#e8f5e9":"#ffebee",borderRadius:3,fontSize:"0.78rem",color:msg.includes("✅")?"#2e7d32":"#b8302a"}}>{msg}</div>}
         {loading?<div style={{textAlign:"center",padding:20,color:"#888"}}>Caricamento...</div>:(
           <div style={{marginBottom:20}}>
-            <div style={{fontSize:"0.6rem",textTransform:"uppercase",color:"#aaa",marginBottom:10}}>Utenti ({utenti.length})</div>
+            <div style={{fontSize:"0.6rem",textTransform:"uppercase",color:"#aaa",marginBottom:10}}>Utenti nel sistema ({utenti.length})</div>
             {utenti.map(u=>(
               <div key={u.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:"#fafaf8",border:"1px solid #e8e4dc",borderRadius:4,marginBottom:8,flexWrap:"wrap",gap:8}}>
                 <div>
-                  <div style={{fontSize:"0.82rem",fontWeight:"bold",color:"#1a1a1a"}}>{u.nome||"—"}</div>
+                  <div style={{fontSize:"0.82rem",fontWeight:"bold",color:"#1a1a1a"}}>{u.nome}</div>
                   <div style={{fontSize:"0.65rem",color:"#888",marginTop:2}}>{u.email}</div>
                 </div>
-                <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <span style={{fontSize:"0.65rem",padding:"3px 10px",borderRadius:10,background:u.ruolo==="admin"?"#fff3e0":"#e8f5e9",color:u.ruolo==="admin"?"#e67e00":"#2e7d32"}}>
-                    {u.ruolo==="admin"?"👑 Admin":"👤 Utente"}
-                  </span>
-                  <select value={u.ruolo} onChange={e=>handleRuolo(u.id,e.target.value)}
-                    style={{border:"1px solid #ddd",borderRadius:3,padding:"4px 8px",fontFamily:"monospace",fontSize:"0.68rem",background:"#fff",outline:"none",cursor:"pointer"}}>
-                    <option value="utente">Utente</option>
-                    <option value="admin">Admin</option>
-                  </select>
-                </div>
+                <span style={{fontSize:"0.65rem",padding:"3px 10px",borderRadius:10,background:u.ruolo==="admin"?"#fff3e0":"#e8f5e9",color:u.ruolo==="admin"?"#e67e00":"#2e7d32"}}>
+                  {u.ruolo==="admin"?"👑 Admin":"👤 Utente"}
+                </span>
               </div>
             ))}
           </div>
         )}
-        {!showNew?(
-          <button onClick={()=>setShowNew(true)} style={{width:"100%",padding:11,background:"#1a1a1a",color:"#fff",border:"none",borderRadius:3,cursor:"pointer",fontFamily:"monospace",fontSize:"0.75rem",textTransform:"uppercase"}}>+ Crea nuovo utente</button>
-        ):(
-          <div style={{background:"#f5f2eb",border:"1px solid #d8d4cc",borderRadius:4,padding:20}}>
-            <div style={{fontSize:"0.6rem",textTransform:"uppercase",color:"#aaa",marginBottom:14}}>Nuovo utente</div>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
-              <div><label style={lbl}>Nome *</label><input style={inp} value={newNome} onChange={e=>setNewNome(e.target.value)} placeholder="Mario Rossi"/></div>
-              <div><label style={lbl}>Ruolo</label>
-                <select value={newRuolo} onChange={e=>setNewRuolo(e.target.value)} style={inp}>
-                  <option value="utente">Utente</option>
-                  <option value="admin">Admin</option>
-                </select>
-              </div>
-              <div><label style={lbl}>Email *</label><input style={inp} type="email" value={newEmail} onChange={e=>setNewEmail(e.target.value)} placeholder="email@esempio.it"/></div>
-              <div><label style={lbl}>Password *</label><input style={inp} type="password" value={newPass} onChange={e=>setNewPass(e.target.value)} placeholder="min 6 caratteri"/></div>
-            </div>
-            <div style={{background:"#fff8e1",border:"1px solid #ffe082",borderRadius:3,padding:"8px 12px",marginBottom:12,fontSize:"0.7rem",color:"#7a5a00"}}>
-              ⚠ Dopo la creazione l'utente potrà accedere subito con email e password impostate.
-            </div>
-            <div style={{display:"flex",gap:10}}>
-              <button onClick={handleCreate} disabled={saving||!newEmail||!newPass||!newNome}
-                style={{flex:1,padding:11,background:(!newEmail||!newPass||!newNome||saving)?"#ccc":"#2e7d32",color:"#fff",border:"none",borderRadius:3,cursor:(!newEmail||!newPass||!newNome||saving)?"not-allowed":"pointer",fontFamily:"monospace",fontSize:"0.75rem",textTransform:"uppercase"}}>
-                {saving?"Creazione...":"💾 Crea utente"}
-              </button>
-              <button onClick={()=>setShowNew(false)} style={{flex:1,padding:11,background:"#e8e4dc",color:"#555",border:"none",borderRadius:3,cursor:"pointer",fontFamily:"monospace",fontSize:"0.75rem",textTransform:"uppercase"}}>Annulla</button>
-            </div>
+        <div style={{background:"#f0f7ff",border:"1px solid #bee3f8",borderRadius:4,padding:"14px 16px"}}>
+          <div style={{fontSize:"0.75rem",fontWeight:"bold",color:"#1565c0",marginBottom:6}}>ℹ Come aggiungere utenti</div>
+          <div style={{fontSize:"0.72rem",color:"#444",lineHeight:1.7}}>
+            1. Vai su <strong>github.com/bigtelemarketing/lextrace</strong><br/>
+            2. Apri il file <strong>users.json</strong> e clicca ✏️<br/>
+            3. Aggiungi una riga nel formato:<br/>
+            <code style={{background:"#e8f0fe",padding:"2px 6px",borderRadius:2,fontSize:"0.68rem"}}>
+              {`{"id":"3","nome":"Nome","email":"email@x.it","password":"pass","ruolo":"utente"}`}
+            </code><br/>
+            4. Clicca <strong>Commit changes</strong>
           </div>
-        )}
+        </div>
       </div>
     </div>
   );
@@ -667,8 +607,7 @@ function OrdineModal({cliente,onSave,onClose}) {
 }
 
 function App() {
-  const [user,      setUser]     = useState(null);
-  const [profilo,   setProfilo]  = useState(null);
+  const [user,      setUser]     = useState(()=>getSession());
   const [showAdmin, setShowAdmin]= useState(false);
   const [tab,       setTab]      = useState("persona");
   const [nome,      setNome]     = useState("");
@@ -699,25 +638,12 @@ function App() {
   const [expandCl,  setExpandCl] = useState(null);
   const [checklist, setChecklist]= useState(CHECKLIST_ITEMS.map(i=>({...i,stato:"non_verificato",note:""})));
 
-  const isAdmin = profilo?.ruolo === "admin";
-
-  useEffect(()=>{
-    sb.auth.getSession().then(({ data: { session } }) => {
-      if(session?.user){ setUser(session.user); getProfilo(session.user.id).then(setProfilo); }
-    });
-    const { data: { subscription } } = sb.auth.onAuthStateChange(async (event, session) => {
-      const u = session?.user || null;
-      setUser(u);
-      if(u){ const p = await getProfilo(u.id); setProfilo(p); }
-      else setProfilo(null);
-    });
-    return () => subscription.unsubscribe();
-  },[]);
+  const isAdmin = user?.ruolo === "admin";
 
   useEffect(()=>{
     if(!user)return;
-    if(view==="archivio"){setLoading(true);loadReports().then(r=>{setReports(r);setLoading(false)});}
-    if(view==="clienti"){setLoading(true);loadClienti().then(c=>{setClienti(c);setLoading(false)});}
+    if(view==="archivio"){setLoading(true);loadReports(user.id,isAdmin).then(r=>{setReports(r);setLoading(false)});}
+    if(view==="clienti"){setLoading(true);loadClienti(user.id,isAdmin).then(c=>{setClienti(c);setLoading(false)});}
   },[view,user]);
 
   const toggleSrc=id=>setSources(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
@@ -733,17 +659,17 @@ function App() {
   const handleSave=async()=>{
     setSaving(true);showMsg("⏳ Salvataggio...");
     const report={id:Date.now(),data:new Date().toLocaleString("it-IT"),soggetto,tab,contesto:contesto||"Recupero crediti",note,cf,piva,sections,links,checklist};
-    const ok=await saveReport(report);
+    const ok=await saveReport(report,user.id);
     if(ok){setReports(prev=>[report,...prev]);showMsg("✅ Salvato!");}
     else showMsg("❌ Errore salvataggio");
     setSaving(false);
   };
   const handleDelReport=async id=>{const ok=await deleteReport(id);if(ok){setReports(prev=>prev.filter(r=>r.id!==id));showMsg("🗑 Eliminato");}else showMsg("❌ Errore");setDelConf(null);};
-  const handleEditReport=async updated=>{updated.modificato=new Date().toLocaleString("it-IT");const ok=await saveReport(updated);if(ok){setReports(prev=>prev.map(r=>r.id===updated.id?updated:r));showMsg("✅ Salvato");}else showMsg("❌ Errore");setEditRep(null);};
-  const handleSaveCl=async c=>{const isNew=!editCl;const ok=await saveCliente(c);if(ok){setClienti(prev=>isNew?[c,...prev]:prev.map(x=>x.id===c.id?c:x));showMsg(isNew?"✅ Cliente aggiunto!":"✅ Cliente aggiornato!");}else showMsg("❌ Errore");setNewCl(false);setEditCl(null);};
+  const handleEditReport=async updated=>{updated.modificato=new Date().toLocaleString("it-IT");const ok=await saveReport(updated,user.id);if(ok){setReports(prev=>prev.map(r=>r.id===updated.id?updated:r));showMsg("✅ Salvato");}else showMsg("❌ Errore");setEditRep(null);};
+  const handleSaveCl=async c=>{const isNew=!editCl;const ok=await saveCliente(c,user.id);if(ok){setClienti(prev=>isNew?[c,...prev]:prev.map(x=>x.id===c.id?c:x));showMsg(isNew?"✅ Cliente aggiunto!":"✅ Cliente aggiornato!");}else showMsg("❌ Errore");setNewCl(false);setEditCl(null);};
   const handleDelCl=async id=>{const ok=await deleteCliente(id);if(ok){setClienti(prev=>prev.filter(c=>c.id!==id));showMsg("🗑 Cliente eliminato");}else showMsg("❌ Errore");setDelClConf(null);};
-  const handleSaveOrdine=async ordine=>{const cliente=clienti.find(c=>c.id===ordineFor.id);const updated={...cliente,ordini:[ordine,...(cliente.ordini||[])]};const ok=await saveCliente(updated);if(ok){setClienti(prev=>prev.map(c=>c.id===updated.id?updated:c));showMsg("✅ Ordine creato!");}else showMsg("❌ Errore");setOrdineFor(null);};
-  const handleStatoPag=async(cid,oid,stato)=>{const cliente=clienti.find(c=>c.id===cid);const updated={...cliente,ordini:(cliente.ordini||[]).map(o=>o.id===oid?{...o,stato}:o)};const ok=await saveCliente(updated);if(ok){setClienti(prev=>prev.map(c=>c.id===updated.id?updated:c));}else showMsg("❌ Errore");};
+  const handleSaveOrdine=async ordine=>{const cliente=clienti.find(c=>c.id===ordineFor.id);const updated={...cliente,ordini:[ordine,...(cliente.ordini||[])]};const ok=await saveCliente(updated,user.id);if(ok){setClienti(prev=>prev.map(c=>c.id===updated.id?updated:c));showMsg("✅ Ordine creato!");}else showMsg("❌ Errore");setOrdineFor(null);};
+  const handleStatoPag=async(cid,oid,stato)=>{const cliente=clienti.find(c=>c.id===cid);const updated={...cliente,ordini:(cliente.ordini||[]).map(o=>o.id===oid?{...o,stato}:o)};const ok=await saveCliente(updated,user.id);if(ok){setClienti(prev=>prev.map(c=>c.id===updated.id?updated:c));}else showMsg("❌ Errore");};
 
   const inp={width:"100%",padding:"9px 12px",border:"1px solid #ccc",borderRadius:3,fontFamily:"monospace",fontSize:"0.82rem",background:"#fafaf8",outline:"none"};
   const lbl={display:"block",fontSize:"0.6rem",textTransform:"uppercase",letterSpacing:"0.08em",color:"#888",marginBottom:5};
@@ -752,7 +678,7 @@ function App() {
   const totCl=c=>(c.ordini||[]).reduce((a,o)=>a+(o.totale||0),0);
   const arrCl=c=>(c.ordini||[]).filter(o=>o.stato==="arretrato").reduce((a,o)=>a+(o.totale||0),0);
 
-  if(!user) return <LoginPage onLogin={async(u)=>{setUser(u);const p=await getProfilo(u.id);setProfilo(p);}}/>;
+  if(!user) return <LoginPage onLogin={u=>{setUser(u);}}/>;
 
   return(
     <div style={{background:"#f5f2eb",minHeight:"100vh",padding:"28px 20px"}}>
@@ -764,14 +690,14 @@ function App() {
                 Lex<span style={{color:"#b8302a"}}>Trace</span>
                 {isAdmin&&<span style={{fontSize:"0.7rem",background:"#e67e00",color:"#fff",padding:"2px 8px",borderRadius:10,marginLeft:10,verticalAlign:"middle"}}>👑 Admin</span>}
               </h1>
-              <p style={{fontSize:"0.65rem",color:"#888",marginTop:5,textTransform:"uppercase",letterSpacing:"0.06em"}}>{profilo?.nome||user.email}</p>
+              <p style={{fontSize:"0.65rem",color:"#888",marginTop:5,textTransform:"uppercase",letterSpacing:"0.06em"}}>{user.nome}</p>
             </div>
             <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
               {navBtn("form","🔍 Ricerca")}
               {navBtn("archivio","📁 Archivio"+(reports.length>0?" ("+reports.length+")":""))}
               {navBtn("clienti","👥 Clienti"+(clienti.length>0?" ("+clienti.length+")":""))}
               {isAdmin&&<button onClick={()=>setShowAdmin(true)} style={{background:"#e67e00",color:"#fff",border:"none",borderRadius:3,padding:"7px 14px",cursor:"pointer",fontFamily:"monospace",fontSize:"0.68rem",textTransform:"uppercase"}}>👑 Utenti</button>}
-              <button onClick={async()=>{await signOut();setUser(null);setProfilo(null);}} style={{background:"#555",color:"#fff",border:"none",borderRadius:3,padding:"7px 14px",cursor:"pointer",fontFamily:"monospace",fontSize:"0.68rem",textTransform:"uppercase"}}>Esci</button>
+              <button onClick={()=>{logoutUser();setUser(null);setReports([]);setClienti([]);}} style={{background:"#555",color:"#fff",border:"none",borderRadius:3,padding:"7px 14px",cursor:"pointer",fontFamily:"monospace",fontSize:"0.68rem",textTransform:"uppercase"}}>Esci</button>
             </div>
           </div>
         </div>
@@ -875,7 +801,7 @@ function App() {
 
         {view==="archivio"&&(
           <div>
-            {isAdmin&&<div style={{background:"#fff3e0",border:"1px solid #ffe0b2",borderRadius:4,padding:"10px 16px",marginBottom:16,fontSize:"0.75rem",color:"#e67e00"}}>👑 Admin — tutti i dossier</div>}
+            {isAdmin&&<div style={{background:"#fff3e0",border:"1px solid #ffe0b2",borderRadius:4,padding:"10px 16px",marginBottom:16,fontSize:"0.75rem",color:"#e67e00"}}>👑 Admin — tutti i dossier di tutti gli utenti</div>}
             <div style={{position:"relative",marginBottom:20}}>
               <input style={{...inp,paddingLeft:36}} value={searchR} onChange={e=>setSearchR(e.target.value)} placeholder="Cerca per nome, CF, P.IVA, contesto..."/>
               <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"#aaa"}}>🔍</span>
