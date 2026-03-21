@@ -13,7 +13,7 @@
     body { background: #f5f2eb; font-family: monospace; }
     a { text-decoration: none; }
     .overlay { position:fixed; inset:0; background:rgba(0,0,0,0.55); z-index:100; display:flex; align-items:center; justify-content:center; padding:20px; }
-    .modal { background:#fff; border-radius:6px; padding:28px; width:100%; max-width:660px; max-height:90vh; overflow-y:auto; }
+    .modal { background:#fff; border-radius:6px; padding:28px; width:100%; max-width:680px; max-height:90vh; overflow-y:auto; }
   </style>
 </head>
 <body>
@@ -21,7 +21,7 @@
 <script type="text/babel">
 const { useState, useEffect } = React;
 
-const GH_TOKEN   = "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";
+const GH_TOKEN   = "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";
 const GIST_FILE  = "lextrace_reports.json";
 const GIST_FILE2 = "lextrace_clienti.json";
 let   GIST_ID    = localStorage.getItem("lextrace_gist_id") || "";
@@ -72,7 +72,6 @@ const saveReports = (d) => saveGist(GIST_FILE, "reports", d);
 const loadClienti = () => loadGist(GIST_FILE2);
 const saveClienti = (d) => saveGist(GIST_FILE2, "clienti", d);
 
-// ─── DATI BASE ────────────────────────────────────────────────────────────────
 const SOURCES = [
   { id: "cciaa",     name: "Registro Imprese / CCIAA", cost: "~€7-15" },
   { id: "inipec",    name: "IniPEC / PEC ufficiali",   cost: "Gratuito" },
@@ -90,78 +89,92 @@ const CHECKLIST_ITEMS = [
   { id: "banca",    label: "Conti correnti",               fonte: "Pignoramento terzi",  link: "https://portaletribunali.giustizia.it" },
   { id: "telefono", label: "Numeri di telefono",           fonte: "OSINT/Investigatore", link: "https://www.paginebianche.it" },
   { id: "registro", label: "Cariche societarie",           fonte: "Registro Imprese",    link: "https://www.registroimprese.it" },
-  { id: "gazzetta", label: "Procedure concorsuali",        fonte: "Gazzetta Ufficiale",  link: "https://www.gazzettaufficiale.it" },
+  { id: "gazzetta2",label: "Procedure concorsuali",        fonte: "Gazzetta Ufficiale",  link: "https://www.gazzettaufficiale.it" },
 ];
 
 const LISTINO_DEFAULT = [
-  { id: "base",       nome: "Dossier Base",       desc: "Ricerca web + Registro Imprese",         prezzo: 49 },
-  { id: "standard",   nome: "Dossier Standard",   desc: "Base + PRA + Catasto + IniPEC",           prezzo: 99 },
-  { id: "completo",   nome: "Dossier Completo",   desc: "Standard + INPS + Cerved + Telefono",     prezzo: 199 },
-  { id: "urgente",    nome: "Urgenza 24h",         desc: "Qualsiasi dossier con priorità massima", prezzo: 80 },
+  { id: "base",     nome: "Dossier Base",     desc: "Ricerca web + Registro Imprese",        prezzo: 49 },
+  { id: "standard", nome: "Dossier Standard", desc: "Base + PRA + Catasto + IniPEC",          prezzo: 99 },
+  { id: "completo", nome: "Dossier Completo", desc: "Standard + INPS + Cerved + Telefono",    prezzo: 199 },
+  { id: "urgente",  nome: "Urgenza 24h",      desc: "Qualsiasi dossier con priorità massima", prezzo: 80 },
 ];
 
-const STATI_PAGAMENTO = ["in_attesa", "pagato", "arretrato", "annullato"];
-const STATI_PAG_LABEL = { in_attesa: "⏳ In attesa", pagato: "✅ Pagato", arretrato: "🔴 Arretrato", annullato: "✗ Annullato" };
-const STATI_PAG_COLOR = { in_attesa: "#e67e00", pagato: "#2e7d32", arretrato: "#b8302a", annullato: "#888" };
+const STATI_PAG       = ["in_attesa","pagato","arretrato","annullato"];
+const STATI_PAG_LABEL = { in_attesa:"⏳ In attesa", pagato:"✅ Pagato", arretrato:"🔴 Arretrato", annullato:"✗ Annullato" };
+const STATI_PAG_COLOR = { in_attesa:"#e67e00", pagato:"#2e7d32", arretrato:"#b8302a", annullato:"#888" };
 
 function buildLinks(data) {
   const isP = data.tab === "persona";
-  const q   = encodeURIComponent(`"${isP ? data.nome + " " + data.cognome : data.ragione}"`);
-  const qR  = encodeURIComponent(isP ? data.nome + " " + data.cognome : data.ragione);
+  const q   = encodeURIComponent(`"${isP ? data.nome+" "+data.cognome : data.ragione}"`);
+  const qR  = encodeURIComponent(isP ? data.nome+" "+data.cognome : data.ragione);
   const qCf = encodeURIComponent(data.cf || qR);
   return [
-    { label: "🔍 Motori di ricerca", links: [
-      { name: "Google — menzioni",         url: `https://www.google.com/search?q=${q}` },
-      { name: "Google News",               url: `https://news.google.com/search?q=${q}&hl=it` },
-      { name: "Google — segnali negativi", url: `https://www.google.com/search?q=${q}+%22protesto%22+%22truffa%22` },
+    { label:"🔍 Motori di ricerca", links:[
+      { name:"Google — menzioni",         url:`https://www.google.com/search?q=${q}` },
+      { name:"Google News",               url:`https://news.google.com/search?q=${q}&hl=it` },
+      { name:"Google — segnali negativi", url:`https://www.google.com/search?q=${q}+%22protesto%22+%22truffa%22` },
     ]},
-    { label: "🏢 Registro Imprese", links: [
-      { name: "Registro Imprese",          url: `https://www.registroimprese.it/ricerca-libera?q=${q}` },
-      { name: "Telemaco InfoCamere",       url: `https://www.telemaco.infocamere.it` },
-      { name: "OpenCorporates",            url: `https://opencorporates.com/search?q=${qR}&jurisdiction_code=it` },
+    { label:"🏢 Registro Imprese", links:[
+      { name:"Registro Imprese",          url:`https://www.registroimprese.it/ricerca-libera?q=${q}` },
+      { name:"Telemaco InfoCamere",       url:`https://www.telemaco.infocamere.it` },
+      { name:"OpenCorporates",            url:`https://opencorporates.com/search?q=${qR}&jurisdiction_code=it` },
     ]},
-    { label: "📋 PEC e Contatti", links: [
-      { name: "IniPEC",                    url: `https://www.inipec.gov.it/cerca-pec/-/pec/impresa?cf=${qCf}` },
-      { name: "Pagine Gialle",             url: `https://www.paginegialle.it/ricerca?qs=${qR}` },
-      { name: "Pagine Bianche",            url: `https://www.paginebianche.it/ricerca?qs=${qR}` },
+    { label:"📋 PEC e Contatti", links:[
+      { name:"IniPEC",                    url:`https://www.inipec.gov.it/cerca-pec/-/pec/impresa?cf=${qCf}` },
+      { name:"Pagine Gialle",             url:`https://www.paginegialle.it/ricerca?qs=${qR}` },
+      { name:"Pagine Bianche",            url:`https://www.paginebianche.it/ricerca?qs=${qR}` },
     ]},
-    { label: "💼 Profili Professionali", links: [
-      { name: "LinkedIn — persona",        url: `https://www.linkedin.com/search/results/people/?keywords=${qR}` },
-      { name: "LinkedIn — azienda",        url: `https://www.linkedin.com/search/results/companies/?keywords=${qR}` },
-      { name: "Facebook",                  url: `https://www.facebook.com/search/top/?q=${qR}` },
+    { label:"💼 Profili Professionali", links:[
+      { name:"LinkedIn — persona",        url:`https://www.linkedin.com/search/results/people/?keywords=${qR}` },
+      { name:"LinkedIn — azienda",        url:`https://www.linkedin.com/search/results/companies/?keywords=${qR}` },
+      { name:"Facebook",                  url:`https://www.facebook.com/search/top/?q=${qR}` },
     ]},
-    { label: "⚖️ Fonti Legali", links: [
-      { name: "Gazzetta Ufficiale",        url: `https://www.gazzettaufficiale.it/ricerca/anteprima/ricercaTestoGU?query=${q}` },
-      { name: "Il Fallimentarista",        url: `https://www.ilfallimentarista.it/ricerca?q=${qR}` },
-      { name: "Portale Tribunali",         url: `https://portaletribunali.giustizia.it` },
-      { name: "Aste giudiziarie",          url: `https://pvp.giustizia.it/pvp/it/list_aste.wp` },
+    { label:"⚖️ Fonti Legali", links:[
+      { name:"Gazzetta Ufficiale",        url:`https://www.gazzettaufficiale.it/ricerca/anteprima/ricercaTestoGU?query=${q}` },
+      { name:"Il Fallimentarista",        url:`https://www.ilfallimentarista.it/ricerca?q=${qR}` },
+      { name:"Portale Tribunali",         url:`https://portaletribunali.giustizia.it` },
+      { name:"Aste giudiziarie",          url:`https://pvp.giustizia.it/pvp/it/list_aste.wp` },
     ]},
-    { label: "🚗 Veicoli e Patrimonio", links: [
-      { name: "ACI PRA — Visura veicoli",  url: `https://www.aci.it/i-servizi/sportello-online/visura-pra.html` },
-      { name: "Agenzia Entrate — catasto", url: `https://www.agenziaentrate.gov.it/portale/web/guest/schede/altri-servizi/consultazione-banche-dati-catastali` },
-      { name: "Agenzia Entrate — ipoteche",url: `https://www.agenziaentrate.gov.it/portale/web/guest/schede/altri-servizi/ispezione-ipotecaria` },
+    { label:"🚗 Veicoli e Patrimonio", links:[
+      { name:"ACI PRA — Visura veicoli",  url:`https://www.aci.it/i-servizi/sportello-online/visura-pra.html` },
+      { name:"Agenzia Entrate — catasto", url:`https://www.agenziaentrate.gov.it/portale/web/guest/schede/altri-servizi/consultazione-banche-dati-catastali` },
+      { name:"Agenzia Entrate — ipoteche",url:`https://www.agenziaentrate.gov.it/portale/web/guest/schede/altri-servizi/ispezione-ipotecaria` },
     ]},
   ];
 }
 
 function generateSections(data) {
   const isP  = data.tab === "persona";
-  const nome = isP ? (data.nome + " " + data.cognome).trim() : data.ragione;
+  const nome = isP ? (data.nome+" "+data.cognome).trim() : data.ragione;
   const oggi = new Date().toLocaleDateString("it-IT");
   return [
-    { title: "DOSSIER INVESTIGATIVO", content: ["Data: "+oggi,"Soggetto: "+nome,"Tipo: "+(isP?"Persona Fisica":"Persona Giuridica"),isP&&data.cf?"C.F.: "+data.cf:"",isP&&data.citta?"Città: "+data.citta:"",!isP&&data.piva?"P.IVA: "+data.piva:"",!isP&&data.sede?"Sede: "+data.sede:"","Contesto: "+(data.contesto||"Recupero crediti"),data.note?"Note: "+data.note:""].filter(Boolean).join("\n") },
-    { title: "1. PERCORSO DI RICERCA", content: isP
+    { title:"DOSSIER INVESTIGATIVO", content:[
+        "Data: "+oggi,"Soggetto: "+nome,"Tipo: "+(isP?"Persona Fisica":"Persona Giuridica"),
+        isP&&data.cf?"C.F.: "+data.cf:"", isP&&data.citta?"Città: "+data.citta:"",
+        !isP&&data.piva?"P.IVA: "+data.piva:"", !isP&&data.sede?"Sede: "+data.sede:"",
+        "Contesto: "+(data.contesto||"Recupero crediti"), data.note?"Note: "+data.note:"",
+      ].filter(Boolean).join("\n")
+    },
+    { title:"1. PERCORSO DI RICERCA", content: isP
       ? "STEP 1 — Registro Imprese: cariche, partecipazioni\nSTEP 2 — LinkedIn: profilo professionale\nSTEP 3 — Google + News: menzioni e segnali negativi\nSTEP 4 — IniPEC: PEC se titolare d'impresa\nSTEP 5 — Gazzetta Ufficiale: procedure concorsuali\nSTEP 6 — Agenzia Entrate: catasto e ipoteche"
       : "STEP 1 — Registro Imprese: visura camerale (~€7-15)\nSTEP 2 — Telemaco: bilanci e protesti\nSTEP 3 — IniPEC: PEC per diffida formale\nSTEP 4 — Gazzetta Ufficiale: procedure concorsuali\nSTEP 5 — Il Fallimentarista: fallimenti\nSTEP 6 — Cerved/CRIF: report creditizio (~€50-150)"
     },
-    { title: "2. PATRIMONIO E BENI", content: "VEICOLI:\n→ Visura PRA: aci.it · Con CF, costo ~€5\n→ Dati: targa, modello, intestatario\n\nIMMOBILI:\n→ Catasto: agenziaentrate.gov.it · Gratuito con CF\n→ Ipoteche e vincoli: Conservatoria RR.II.\n\nCONTI CORRENTI:\n→ Solo con decreto ingiuntivo esecutivo\n→ Pignoramento presso terzi (banche)\n\nDATORE DI LAVORO:\n→ INPS con delega avvocato\n→ Pignoramento quinto stipendio (max 1/5)" },
-    { title: "3. NUMERI DI TELEFONO", content: "FONTI PUBBLICHE:\n→ Pagine Bianche: paginebianche.it\n→ Pagine Gialle: paginegialle.it\n→ LinkedIn, Facebook, sito web aziendale\n→ IniPEC per PEC ufficiale\n\nOSINT:\n→ Google: nome + \"telefono\" o \"contatto\"\n→ Trovapersone.it, Whitepages.it\n\nINVESTIGATORE PRIVATO:\n→ Per numeri non rintracciabili (TULPS art. 134)\n→ Associazione: aiip.it" },
-    { title: "4. SEGNALI DI RISCHIO", content: "• Protesti → CCIAA o Telemaco InfoCamere\n• Fallimenti → Gazzetta Ufficiale + Il Fallimentarista\n• Ipoteche → Conservatoria RR.II.\n• Bilanci negativi → ultime 3 annualità\n• Notizie negative → Google: \"truffa\" \"inadempiente\"\n• Aste beni → pvp.giustizia.it" },
-    { title: "5. ITER RECUPERO CREDITI", content: isP
-      ? "1. Verifica veicoli: PRA con CF (aci.it)\n2. Verifica immobili: catasto + ipoteche\n3. Diffida via PEC certificata\n4. Se insoluto → decreto ingiuntivo\n5. Pignoramento c/c bancario\n6. Pignoramento quinto stipendio\n7. Pignoramento immobiliare se necessario"
+    { title:"2. PATRIMONIO E BENI", content:
+      "VEICOLI:\n→ Visura PRA: aci.it · Con CF, costo ~€5\n→ Dati: targa, modello, intestatario\n\nIMMOBILI:\n→ Catasto: agenziaentrate.gov.it · Gratuito con CF\n→ Ipoteche e vincoli: Conservatoria RR.II.\n\nCONTI CORRENTI:\n→ Solo con decreto ingiuntivo esecutivo\n→ Pignoramento presso terzi (banche)\n\nDATORE DI LAVORO:\n→ INPS con delega avvocato\n→ Pignoramento quinto stipendio (max 1/5)"
+    },
+    { title:"3. NUMERI DI TELEFONO", content:
+      "FONTI PUBBLICHE:\n→ Pagine Bianche: paginebianche.it\n→ Pagine Gialle: paginegialle.it\n→ LinkedIn, Facebook, sito web aziendale\n\nOSINT:\n→ Google: nome + \"telefono\" o \"contatto\"\n→ Trovapersone.it, Whitepages.it\n\nINVESTIGATORE PRIVATO:\n→ Per numeri non rintracciabili (TULPS art. 134)\n→ Associazione: aiip.it"
+    },
+    { title:"4. SEGNALI DI RISCHIO", content:
+      "• Protesti → CCIAA o Telemaco InfoCamere\n• Fallimenti → Gazzetta Ufficiale + Il Fallimentarista\n• Ipoteche → Conservatoria RR.II.\n• Bilanci negativi → ultime 3 annualità\n• Notizie negative → Google: \"truffa\" \"inadempiente\"\n• Aste beni → pvp.giustizia.it"
+    },
+    { title:"5. ITER RECUPERO CREDITI", content: isP
+      ? "1. Verifica veicoli: PRA con CF\n2. Verifica immobili: catasto + ipoteche\n3. Diffida via PEC certificata\n4. Se insoluto → decreto ingiuntivo\n5. Pignoramento c/c bancario\n6. Pignoramento quinto stipendio\n7. Pignoramento immobiliare se necessario"
       : "1. Visura camerale + bilanci\n2. Verifica immobili e veicoli aziendali\n3. Diffida via PEC (inipec.gov.it)\n4. Decreto ingiuntivo + pignoramento\n5. Pignoramento crediti verso terzi\n6. Se concordato → insinuazione al passivo"
     },
-    { title: "6. CONTATTI UTILI", content: "• ACI/PRA: aci.it — Tel. 803.116\n• Registro Imprese: registroimprese.it — Tel. 199.50.20.20\n• IniPEC: inipec.gov.it\n• Agenzia Entrate: agenziaentrate.gov.it — Tel. 848.800.444\n• INPS: inps.it — Tel. 803.164\n• Tribunale: giustizia.it/it/tribunali\n• Cerved: cerved.com — Tel. 02.77541\n• Investigatori: aiip.it" },
+    { title:"6. CONTATTI UTILI", content:
+      "• ACI/PRA: aci.it — Tel. 803.116\n• Registro Imprese: registroimprese.it — Tel. 199.50.20.20\n• IniPEC: inipec.gov.it\n• Agenzia Entrate: agenziaentrate.gov.it — Tel. 848.800.444\n• INPS: inps.it — Tel. 803.164\n• Tribunale: giustizia.it/it/tribunali\n• Cerved: cerved.com — Tel. 02.77541\n• Investigatori: aiip.it"
+    },
   ];
 }
 
@@ -169,7 +182,7 @@ function exportPDF(report) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit:"mm", format:"a4" });
   const pageW = doc.internal.pageSize.getWidth();
-  const margin = 15, maxW = pageW - margin * 2;
+  const margin = 15, maxW = pageW - margin*2;
   let y = 20;
   const addText = (text, size, bold, color) => {
     doc.setFontSize(size); doc.setFont("helvetica", bold?"bold":"normal");
@@ -188,11 +201,16 @@ function exportPDF(report) {
     doc.setFillColor(46,46,46); doc.rect(margin-2,y-5,maxW+4,8,"F");
     doc.setFontSize(8); doc.setFont("helvetica","bold"); doc.setTextColor(245,242,235);
     doc.text("CHECKLIST VERIFICHE",margin,y); y+=8;
-    report.checklist.forEach(item => { if(y>270){doc.addPage();y=20;} doc.setFontSize(9); doc.setFont("helvetica","normal"); doc.setTextColor(40,40,40); const s=item.stato==="completato"?"✓":item.stato==="in_corso"?"◎":"○"; doc.text(s+" "+item.label+(item.note?" — "+item.note:""),margin,y); y+=6; }); y+=4;
+    report.checklist.forEach(item => {
+      if(y>270){doc.addPage();y=20;}
+      doc.setFontSize(9); doc.setFont("helvetica","normal"); doc.setTextColor(40,40,40);
+      const s=item.stato==="completato"?"✓":item.stato==="in_corso"?"◎":"○";
+      doc.text(s+" "+item.label+(item.note?" — "+item.note:""),margin,y); y+=6;
+    }); y+=4;
   }
-  if(report.note) { addText("NOTE PERSONALI",10,true,[184,48,42]); addText(report.note,9,false); }
-  const pages = doc.internal.getNumberOfPages();
-  for(let i=1;i<=pages;i++) { doc.setPage(i); doc.setFontSize(7); doc.setTextColor(150); doc.text("LexTrace · Uso professionale · GDPR Art. 6 · "+i+"/"+pages,margin,290); }
+  if(report.note){addText("NOTE PERSONALI",10,true,[184,48,42]);addText(report.note,9,false);}
+  const pages=doc.internal.getNumberOfPages();
+  for(let i=1;i<=pages;i++){doc.setPage(i);doc.setFontSize(7);doc.setTextColor(150);doc.text("LexTrace · Uso professionale · GDPR Art. 6 · "+i+"/"+pages,margin,290);}
   doc.save("LexTrace_"+(report.soggetto||"report").replace(/\s+/g,"_")+"_"+new Date().toISOString().slice(0,10)+".pdf");
 }
 
@@ -200,29 +218,47 @@ function exportPreventivoPDF(cliente, ordine) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit:"mm", format:"a4" });
   const pageW = doc.internal.pageSize.getWidth();
-  const margin = 20, maxW = pageW - margin*2;
+  const margin = 20, maxW = pageW-margin*2;
   doc.setFillColor(184,48,42); doc.rect(0,0,pageW,18,"F");
   doc.setFontSize(16); doc.setFont("helvetica","bold"); doc.setTextColor(255,255,255);
-  doc.text("LexTrace — Preventivo",margin,12);
+  doc.text("LexTrace — Preventivo / Fattura",margin,12);
   doc.setFontSize(9); doc.setFont("helvetica","normal");
-  doc.text("Rif. #"+ordine.id.toString().slice(-6),pageW-margin-30,12);
+  doc.text("Rif. #"+ordine.id.toString().slice(-6),pageW-margin-35,12);
   let y=32;
   doc.setFontSize(10); doc.setFont("helvetica","bold"); doc.setTextColor(30,30,30);
   doc.text("Cliente",margin,y); y+=6;
   doc.setFont("helvetica","normal"); doc.setFontSize(9);
   doc.text(cliente.nome,margin,y); y+=5;
-  if(cliente.email) { doc.text("Email: "+cliente.email,margin,y); y+=5; }
-  if(cliente.telefono) { doc.text("Tel: "+cliente.telefono,margin,y); y+=5; }
-  if(cliente.piva) { doc.text("P.IVA: "+cliente.piva,margin,y); y+=5; }
+  if(cliente.email){doc.text("Email: "+cliente.email,margin,y);y+=5;}
+  if(cliente.telefono){doc.text("Tel: "+cliente.telefono,margin,y);y+=5;}
+  if(cliente.piva){doc.text("P.IVA: "+cliente.piva,margin,y);y+=5;}
+  if(cliente.cf){doc.text("C.F.: "+cliente.cf,margin,y);y+=5;}
   y+=6;
+  // Dettaglio dossier personalizzato
+  if(ordine.dossierPersonalizzato) {
+    doc.setFont("helvetica","bold"); doc.setFontSize(10);
+    doc.text("Dettaglio dossier",margin,y); y+=6;
+    doc.setFillColor(240,237,230); doc.rect(margin,y-4,maxW,7,"F");
+    doc.setFontSize(8); doc.setFont("helvetica","bold"); doc.setTextColor(80,80,80);
+    doc.text("Servizio incluso",margin+2,y+1); doc.text("Incluso",pageW-margin-20,y+1); y+=8;
+    doc.setFont("helvetica","normal"); doc.setTextColor(30,30,30);
+    ordine.dossierPersonalizzato.forEach((item,i) => {
+      if(i%2===0){doc.setFillColor(250,248,245);doc.rect(margin,y-4,maxW,7,"F");}
+      doc.setFontSize(8);
+      const check = item.incluso ? "✓" : "✗";
+      doc.text(check+" "+item.label,margin+2,y);
+      doc.text(item.incluso?"Si":"No",pageW-margin-20,y); y+=7;
+    });
+    y+=4;
+  }
   doc.setFont("helvetica","bold"); doc.setFontSize(10);
-  doc.text("Dettaglio servizi",margin,y); y+=6;
-  doc.setFillColor(240,237,230); doc.rect(margin,y-4,maxW,8,"F");
+  doc.text("Voci",margin,y); y+=6;
+  doc.setFillColor(240,237,230); doc.rect(margin,y-4,maxW,7,"F");
   doc.setFontSize(8); doc.setFont("helvetica","bold"); doc.setTextColor(80,80,80);
   doc.text("Servizio",margin+2,y+1); doc.text("Soggetto",margin+80,y+1); doc.text("Prezzo",pageW-margin-20,y+1); y+=8;
   doc.setFont("helvetica","normal"); doc.setTextColor(30,30,30);
   (ordine.voci||[]).forEach((v,i) => {
-    if(i%2===0) { doc.setFillColor(250,248,245); doc.rect(margin,y-4,maxW,7,"F"); }
+    if(i%2===0){doc.setFillColor(250,248,245);doc.rect(margin,y-4,maxW,7,"F");}
     doc.setFontSize(8);
     doc.text(v.servizio||"-",margin+2,y); doc.text(v.soggetto||"-",margin+80,y); doc.text("€"+v.prezzo,pageW-margin-20,y); y+=7;
   });
@@ -230,21 +266,21 @@ function exportPreventivoPDF(cliente, ordine) {
   doc.setFillColor(184,48,42); doc.rect(margin,y-4,maxW,9,"F");
   doc.setFontSize(10); doc.setFont("helvetica","bold"); doc.setTextColor(255,255,255);
   doc.text("TOTALE",margin+2,y+1); doc.text("€"+ordine.totale,pageW-margin-20,y+1); y+=14;
-  if(ordine.note) { doc.setFontSize(8); doc.setFont("helvetica","normal"); doc.setTextColor(100,100,100); doc.text("Note: "+ordine.note,margin,y); }
+  if(ordine.note){doc.setFontSize(8);doc.setFont("helvetica","normal");doc.setTextColor(100,100,100);doc.text("Note: "+ordine.note,margin,y);}
   doc.setFontSize(7); doc.setTextColor(150);
-  doc.text("LexTrace · Documento generato il "+new Date().toLocaleDateString("it-IT")+" · Uso professionale riservato",margin,287);
+  doc.text("LexTrace · "+new Date().toLocaleDateString("it-IT")+" · Uso professionale riservato",margin,287);
   doc.save("Preventivo_"+(cliente.nome||"cliente").replace(/\s+/g,"_")+"_"+new Date().toISOString().slice(0,10)+".pdf");
 }
 
-// ─── MODAL MODIFICA REPORT ────────────────────────────────────────────────────
-function EditModal({ report, onSave, onClose }) {
+// ─── MODAL EDIT REPORT ───────────────────────────────────────────────────────
+function EditReportModal({ report, onSave, onClose }) {
   const [soggetto, setSoggetto] = useState(report.soggetto||"");
   const [contesto, setContesto] = useState(report.contesto||"");
-  const [note,     setNote]     = useState(report.note||"");
-  const [cf,       setCf]       = useState(report.cf||"");
-  const [piva,     setPiva]     = useState(report.piva||"");
+  const [note, setNote]         = useState(report.note||"");
+  const [cf, setCf]             = useState(report.cf||"");
+  const [piva, setPiva]         = useState(report.piva||"");
   const [sections, setSections] = useState(report.sections||[]);
-  const updateSection = (i,val) => { const u=[...sections]; u[i]={...u[i],content:val}; setSections(u); };
+  const updateSec = (i,val) => { const u=[...sections]; u[i]={...u[i],content:val}; setSections(u); };
   const inp = { width:"100%", padding:"8px 10px", border:"1px solid #ccc", borderRadius:3, fontFamily:"monospace", fontSize:"0.8rem", background:"#fafaf8", outline:"none" };
   const lbl = { display:"block", fontSize:"0.6rem", textTransform:"uppercase", color:"#888", marginBottom:4 };
   return (
@@ -264,7 +300,7 @@ function EditModal({ report, onSave, onClose }) {
         {sections.map((s,i) => (
           <div key={i} style={{ marginBottom:10 }}>
             <div style={{ background:"#2e2e2e", color:"#f5f2eb", padding:"5px 10px", borderRadius:"3px 3px 0 0", fontSize:"0.6rem", textTransform:"uppercase" }}>{s.title}</div>
-            <textarea style={{ ...inp, borderRadius:"0 0 3px 3px", borderTop:"none", resize:"vertical" }} rows={4} value={s.content} onChange={e=>updateSection(i,e.target.value)} />
+            <textarea style={{ ...inp, borderRadius:"0 0 3px 3px", borderTop:"none", resize:"vertical" }} rows={4} value={s.content} onChange={e=>updateSec(i,e.target.value)} />
           </div>
         ))}
         <div style={{ display:"flex", gap:10, marginTop:8 }}>
@@ -278,13 +314,13 @@ function EditModal({ report, onSave, onClose }) {
 
 // ─── CHECKLIST ────────────────────────────────────────────────────────────────
 function Checklist({ checklist, onChange }) {
-  const STATI = ["non_verificato","in_corso","completato","non_trovato"];
-  const SL    = { non_verificato:"○ Da verificare", in_corso:"◎ In corso", completato:"✓ Completato", non_trovato:"✗ Non trovato" };
-  const SC    = { non_verificato:"#aaa", in_corso:"#e67e00", completato:"#2e7d32", non_trovato:"#b8302a" };
-  const upd   = (id,f,v) => onChange(checklist.map(i=>i.id===id?{...i,[f]:v}:i));
+  const STATI=["non_verificato","in_corso","completato","non_trovato"];
+  const SL={ non_verificato:"○ Da verificare", in_corso:"◎ In corso", completato:"✓ Completato", non_trovato:"✗ Non trovato" };
+  const SC={ non_verificato:"#aaa", in_corso:"#e67e00", completato:"#2e7d32", non_trovato:"#b8302a" };
+  const upd=(id,f,v)=>onChange(checklist.map(i=>i.id===id?{...i,[f]:v}:i));
   return (
     <div>
-      {checklist.map(item => (
+      {checklist.map(item=>(
         <div key={item.id} style={{ background:"#fff", border:"1px solid #e0dcd4", borderRadius:4, padding:"11px 14px", marginBottom:8 }}>
           <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:8 }}>
             <div style={{ flex:1 }}>
@@ -298,7 +334,7 @@ function Checklist({ checklist, onChange }) {
               </select>
             </div>
           </div>
-          <input placeholder="Note (es. 2 auto intestate, Fiat 500...)" value={item.note||""} onChange={e=>upd(item.id,"note",e.target.value)}
+          <input placeholder="Note risultato..." value={item.note||""} onChange={e=>upd(item.id,"note",e.target.value)}
             style={{ width:"100%", marginTop:7, padding:"5px 10px", border:"1px solid #e0dcd4", borderRadius:3, fontFamily:"monospace", fontSize:"0.72rem", background:"#fafaf8", outline:"none" }} />
         </div>
       ))}
@@ -309,20 +345,17 @@ function Checklist({ checklist, onChange }) {
 // ─── MODAL CLIENTE ────────────────────────────────────────────────────────────
 function ClienteModal({ cliente, onSave, onClose }) {
   const isNew = !cliente;
-  const [nome,      setNome]      = useState(cliente?.nome||"");
-  const [tipo,      setTipo]      = useState(cliente?.tipo||"privato");
-  const [email,     setEmail]     = useState(cliente?.email||"");
-  const [telefono,  setTelefono]  = useState(cliente?.telefono||"");
-  const [piva,      setPiva]      = useState(cliente?.piva||"");
-  const [cf,        setCf]        = useState(cliente?.cf||"");
-  const [note,      setNote]      = useState(cliente?.note||"");
-  const [listino,   setListino]   = useState(cliente?.listino || LISTINO_DEFAULT.map(v=>({...v})));
-
+  const [nome,     setNome]     = useState(cliente?.nome||"");
+  const [tipo,     setTipo]     = useState(cliente?.tipo||"privato");
+  const [email,    setEmail]    = useState(cliente?.email||"");
+  const [telefono, setTelefono] = useState(cliente?.telefono||"");
+  const [piva,     setPiva]     = useState(cliente?.piva||"");
+  const [cf,       setCf]       = useState(cliente?.cf||"");
+  const [note,     setNote]     = useState(cliente?.note||"");
+  const [listino,  setListino]  = useState(cliente?.listino||LISTINO_DEFAULT.map(v=>({...v})));
+  const updL = (id,p) => setListino(l=>l.map(v=>v.id===id?{...v,prezzo:parseFloat(p)||0}:v));
   const inp = { width:"100%", padding:"8px 10px", border:"1px solid #ccc", borderRadius:3, fontFamily:"monospace", fontSize:"0.8rem", background:"#fafaf8", outline:"none" };
   const lbl = { display:"block", fontSize:"0.6rem", textTransform:"uppercase", color:"#888", marginBottom:4 };
-
-  const updListino = (id, prezzo) => setListino(l => l.map(v => v.id===id ? {...v, prezzo: parseFloat(prezzo)||0} : v));
-
   return (
     <div className="overlay" onClick={onClose}>
       <div className="modal" onClick={e=>e.stopPropagation()}>
@@ -330,28 +363,23 @@ function ClienteModal({ cliente, onSave, onClose }) {
           <h2 style={{ fontFamily:"Georgia,serif", fontSize:"1.3rem" }}>{isNew?"Nuovo cliente":"Modifica cliente"}</h2>
           <button onClick={onClose} style={{ background:"none", border:"none", fontSize:"1.2rem", cursor:"pointer" }}>✕</button>
         </div>
-
-        {/* Tipo */}
         <div style={{ display:"flex", gap:8, marginBottom:16 }}>
-          {["privato","azienda"].map(t => (
+          {["privato","azienda"].map(t=>(
             <button key={t} onClick={()=>setTipo(t)} style={{ flex:1, padding:"8px 0", background:tipo===t?"#1a1a1a":"#e8e4dc", color:tipo===t?"#fff":"#555", border:"none", borderRadius:3, cursor:"pointer", fontFamily:"monospace", fontSize:"0.72rem", textTransform:"uppercase" }}>
               {t==="privato"?"👤 Privato":"🏢 Azienda"}
             </button>
           ))}
         </div>
-
         <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:14 }}>
           <div style={{ gridColumn:"1/-1" }}><label style={lbl}>{tipo==="privato"?"Nome e Cognome *":"Ragione Sociale *"}</label><input style={inp} value={nome} onChange={e=>setNome(e.target.value)} placeholder={tipo==="privato"?"Mario Rossi":"Rossi Srl"} /></div>
           <div><label style={lbl}>Email</label><input style={inp} value={email} onChange={e=>setEmail(e.target.value)} placeholder="email@esempio.it" /></div>
           <div><label style={lbl}>Telefono</label><input style={inp} value={telefono} onChange={e=>setTelefono(e.target.value)} placeholder="+39 333 1234567" /></div>
-          {tipo==="azienda" && <div><label style={lbl}>Partita IVA</label><input style={inp} value={piva} onChange={e=>setPiva(e.target.value)} placeholder="01234567890" /></div>}
+          {tipo==="azienda"&&<div><label style={lbl}>Partita IVA</label><input style={inp} value={piva} onChange={e=>setPiva(e.target.value)} placeholder="01234567890" /></div>}
           <div><label style={lbl}>Codice Fiscale</label><input style={inp} value={cf} onChange={e=>setCf(e.target.value)} placeholder="RSSMRA80A01H501U" /></div>
         </div>
-
-        {/* Listino personalizzato */}
         <div style={{ marginBottom:14 }}>
           <div style={{ fontSize:"0.6rem", textTransform:"uppercase", color:"#aaa", marginBottom:10, paddingBottom:6, borderBottom:"1px solid #eee" }}>Listino prezzi personalizzato</div>
-          {listino.map(v => (
+          {listino.map(v=>(
             <div key={v.id} style={{ display:"flex", alignItems:"center", gap:10, marginBottom:8, padding:"8px 12px", background:"#fafaf8", border:"1px solid #e8e4dc", borderRadius:3 }}>
               <div style={{ flex:1 }}>
                 <div style={{ fontSize:"0.75rem", color:"#1a1a1a" }}>{v.nome}</div>
@@ -359,17 +387,18 @@ function ClienteModal({ cliente, onSave, onClose }) {
               </div>
               <div style={{ display:"flex", alignItems:"center", gap:4 }}>
                 <span style={{ fontSize:"0.75rem", color:"#555" }}>€</span>
-                <input type="number" value={v.prezzo} onChange={e=>updListino(v.id,e.target.value)}
+                <input type="number" value={v.prezzo} onChange={e=>updL(v.id,e.target.value)}
                   style={{ width:70, padding:"5px 8px", border:"1px solid #ccc", borderRadius:3, fontFamily:"monospace", fontSize:"0.82rem", textAlign:"right", outline:"none" }} />
               </div>
             </div>
           ))}
         </div>
-
-        <div style={{ marginBottom:16 }}><label style={lbl}>Note interne</label><textarea style={{ ...inp, resize:"vertical" }} rows={2} value={note} onChange={e=>setNote(e.target.value)} placeholder="Note interne sul cliente..." /></div>
-
+        <div style={{ marginBottom:16 }}><label style={lbl}>Note interne</label><textarea style={{ ...inp, resize:"vertical" }} rows={2} value={note} onChange={e=>setNote(e.target.value)} /></div>
         <div style={{ display:"flex", gap:10 }}>
-          <button onClick={()=>onSave({ id:cliente?.id||Date.now(), nome, tipo, email, telefono, piva, cf, note, listino, creato:cliente?.creato||new Date().toLocaleString("it-IT") })} disabled={!nome.trim()} style={{ flex:1, padding:12, background:nome.trim()?"#1a1a1a":"#ccc", color:"#fff", border:"none", borderRadius:3, cursor:nome.trim()?"pointer":"not-allowed", fontFamily:"monospace", fontSize:"0.75rem", textTransform:"uppercase" }}>💾 Salva cliente</button>
+          <button onClick={()=>onSave({ id:cliente?.id||Date.now(), nome, tipo, email, telefono, piva, cf, note, listino, creato:cliente?.creato||new Date().toLocaleString("it-IT") })} disabled={!nome.trim()}
+            style={{ flex:1, padding:12, background:nome.trim()?"#1a1a1a":"#ccc", color:"#fff", border:"none", borderRadius:3, cursor:nome.trim()?"pointer":"not-allowed", fontFamily:"monospace", fontSize:"0.75rem", textTransform:"uppercase" }}>
+            💾 Salva cliente
+          </button>
           <button onClick={onClose} style={{ flex:1, padding:12, background:"#e8e4dc", color:"#555", border:"none", borderRadius:3, cursor:"pointer", fontFamily:"monospace", fontSize:"0.75rem", textTransform:"uppercase" }}>Annulla</button>
         </div>
       </div>
@@ -377,38 +406,60 @@ function ClienteModal({ cliente, onSave, onClose }) {
   );
 }
 
-// ─── MODAL ORDINE ─────────────────────────────────────────────────────────────
+// ─── MODAL ORDINE CON PERSONALIZZAZIONE DOSSIER ───────────────────────────────
 function OrdineModal({ cliente, onSave, onClose }) {
-  const [voci,   setVoci]   = useState([{ id:Date.now(), servizio:"", soggetto:"", prezzo:0 }]);
+  const [voci,   setVoci]   = useState([{ id:Date.now(), servizio:"", soggetto:"", prezzo:0, cfSoggetto:"" }]);
   const [note,   setNote]   = useState("");
   const [stato,  setStato]  = useState("in_attesa");
+  const [sconto, setSconto] = useState(0);
 
-  const addVoce   = () => setVoci(v=>[...v,{id:Date.now(),servizio:"",soggetto:"",prezzo:0}]);
-  const removeVoce= (id) => setVoci(v=>v.filter(x=>x.id!==id));
-  const updVoce   = (id,f,v) => setVoci(voci=>voci.map(x=>x.id===id?{...x,[f]:v}:x));
-  const totale    = voci.reduce((acc,v)=>acc+(parseFloat(v.prezzo)||0),0);
+  // Personalizzazione dossier per ogni voce
+  const DOSSIER_OPZIONI = [
+    { id:"web",        label:"Ricerca web e notizie" },
+    { id:"registro",   label:"Registro Imprese / CCIAA" },
+    { id:"pra",        label:"Veicoli intestati (PRA)" },
+    { id:"catasto",    label:"Immobili (Catasto)" },
+    { id:"ipoteche",   label:"Ipoteche e vincoli" },
+    { id:"inps",       label:"Datore lavoro / Reddito (INPS)" },
+    { id:"banca",      label:"Conti correnti bancari" },
+    { id:"telefono",   label:"Numeri di telefono" },
+    { id:"linkedin",   label:"Profilo LinkedIn" },
+    { id:"fallimenti", label:"Fallimenti / Procedure concorsuali" },
+  ];
+
+  const [dossierOpz, setDossierOpz] = useState(DOSSIER_OPZIONI.map(o=>({...o,incluso:true})));
+  const [mostraDossier, setMostraDossier] = useState(false);
+
+  const addVoce    = () => setVoci(v=>[...v,{id:Date.now(),servizio:"",soggetto:"",prezzo:0,cfSoggetto:""}]);
+  const removeVoce = (id) => setVoci(v=>v.filter(x=>x.id!==id));
+  const updVoce    = (id,f,v) => setVoci(voci=>voci.map(x=>x.id===id?{...x,[f]:v}:x));
+  const toggleOpz  = (id) => setDossierOpz(d=>d.map(o=>o.id===id?{...o,incluso:!o.incluso}:o));
+
+  const subtotale = voci.reduce((acc,v)=>acc+(parseFloat(v.prezzo)||0),0);
+  const scontoVal = parseFloat(sconto)||0;
+  const totale    = Math.max(0, subtotale - scontoVal).toFixed(2);
 
   const inp = { width:"100%", padding:"7px 9px", border:"1px solid #ccc", borderRadius:3, fontFamily:"monospace", fontSize:"0.78rem", background:"#fafaf8", outline:"none" };
 
   return (
     <div className="overlay" onClick={onClose}>
-      <div className="modal" onClick={e=>e.stopPropagation()}>
+      <div className="modal" style={{ maxWidth:720 }} onClick={e=>e.stopPropagation()}>
         <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, borderBottom:"2px solid #1a1a1a", paddingBottom:12 }}>
           <div>
             <h2 style={{ fontFamily:"Georgia,serif", fontSize:"1.3rem" }}>Nuovo ordine</h2>
-            <div style={{ fontSize:"0.7rem", color:"#888", marginTop:2 }}>Cliente: {cliente.nome}</div>
+            <div style={{ fontSize:"0.7rem", color:"#888", marginTop:2 }}>Cliente: <strong>{cliente.nome}</strong></div>
           </div>
           <button onClick={onClose} style={{ background:"none", border:"none", fontSize:"1.2rem", cursor:"pointer" }}>✕</button>
         </div>
 
-        {/* Listino rapido */}
-        <div style={{ marginBottom:14 }}>
-          <div style={{ fontSize:"0.6rem", textTransform:"uppercase", color:"#aaa", marginBottom:8 }}>Aggiungi dal listino</div>
+        {/* Aggiungi dal listino */}
+        <div style={{ marginBottom:16 }}>
+          <div style={{ fontSize:"0.6rem", textTransform:"uppercase", color:"#aaa", marginBottom:8 }}>Aggiungi dal listino prezzi</div>
           <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
-            {(cliente.listino||LISTINO_DEFAULT).map(v => (
-              <button key={v.id} onClick={()=>setVoci(voci=>[...voci,{id:Date.now(),servizio:v.nome,soggetto:"",prezzo:v.prezzo}])}
-                style={{ padding:"5px 12px", background:"#f0ede6", border:"1px solid #d8d4cc", borderRadius:3, cursor:"pointer", fontFamily:"monospace", fontSize:"0.68rem" }}>
-                + {v.nome} (€{v.prezzo})
+            {(cliente.listino||LISTINO_DEFAULT).map(v=>(
+              <button key={v.id} onClick={()=>setVoci(voci=>[...voci,{id:Date.now(),servizio:v.nome,soggetto:"",prezzo:v.prezzo,cfSoggetto:""}])}
+                style={{ padding:"6px 12px", background:"#f0ede6", border:"1px solid #d8d4cc", borderRadius:3, cursor:"pointer", fontFamily:"monospace", fontSize:"0.68rem" }}>
+                + {v.nome} · <strong>€{v.prezzo}</strong>
               </button>
             ))}
           </div>
@@ -417,29 +468,56 @@ function OrdineModal({ cliente, onSave, onClose }) {
         {/* Voci ordine */}
         <div style={{ marginBottom:14 }}>
           <div style={{ fontSize:"0.6rem", textTransform:"uppercase", color:"#aaa", marginBottom:8 }}>Voci ordine</div>
-          {voci.map((v,i) => (
-            <div key={v.id} style={{ display:"grid", gridTemplateColumns:"2fr 2fr 1fr auto", gap:6, marginBottom:6 }}>
-              <input style={inp} placeholder="Servizio" value={v.servizio} onChange={e=>updVoce(v.id,"servizio",e.target.value)} />
-              <input style={inp} placeholder="Soggetto da investigare" value={v.soggetto} onChange={e=>updVoce(v.id,"soggetto",e.target.value)} />
-              <input style={inp} type="number" placeholder="€" value={v.prezzo} onChange={e=>updVoce(v.id,"prezzo",e.target.value)} />
-              {voci.length>1 && <button onClick={()=>removeVoce(v.id)} style={{ background:"none", border:"1px solid #ddd", borderRadius:3, cursor:"pointer", color:"#888", fontSize:"0.8rem" }}>✕</button>}
+          {voci.map((v,i)=>(
+            <div key={v.id} style={{ background:"#fafaf8", border:"1px solid #e8e4dc", borderRadius:4, padding:"10px 12px", marginBottom:8 }}>
+              <div style={{ display:"grid", gridTemplateColumns:"2fr 2fr 1fr auto", gap:6, marginBottom:6 }}>
+                <input style={inp} placeholder="Tipo servizio" value={v.servizio} onChange={e=>updVoce(v.id,"servizio",e.target.value)} />
+                <input style={inp} placeholder="Soggetto da investigare" value={v.soggetto} onChange={e=>updVoce(v.id,"soggetto",e.target.value)} />
+                <input style={{ ...inp, textAlign:"right" }} type="number" placeholder="€" value={v.prezzo} onChange={e=>updVoce(v.id,"prezzo",e.target.value)} />
+                {voci.length>1&&<button onClick={()=>removeVoce(v.id)} style={{ background:"none", border:"1px solid #ddd", borderRadius:3, cursor:"pointer", color:"#888" }}>✕</button>}
+              </div>
+              <input style={{ ...inp, fontSize:"0.72rem" }} placeholder="CF / P.IVA soggetto (opzionale)" value={v.cfSoggetto} onChange={e=>updVoce(v.id,"cfSoggetto",e.target.value)} />
             </div>
           ))}
-          <button onClick={addVoce} style={{ padding:"6px 14px", background:"none", border:"1px dashed #ccc", borderRadius:3, cursor:"pointer", fontFamily:"monospace", fontSize:"0.7rem", color:"#888", marginTop:4 }}>+ Aggiungi voce</button>
+          <button onClick={addVoce} style={{ padding:"6px 14px", background:"none", border:"1px dashed #ccc", borderRadius:3, cursor:"pointer", fontFamily:"monospace", fontSize:"0.7rem", color:"#888" }}>+ Aggiungi voce</button>
         </div>
 
-        {/* Totale */}
-        <div style={{ background:"#1a1a1a", color:"#f5f2eb", padding:"10px 14px", borderRadius:3, marginBottom:14, display:"flex", justifyContent:"space-between", alignItems:"center" }}>
-          <span style={{ fontSize:"0.75rem", textTransform:"uppercase", letterSpacing:"0.06em" }}>Totale</span>
-          <span style={{ fontSize:"1.1rem", fontWeight:"bold" }}>€{totale.toFixed(2)}</span>
+        {/* Personalizzazione contenuto dossier */}
+        <div style={{ marginBottom:14 }}>
+          <button onClick={()=>setMostraDossier(!mostraDossier)} style={{ width:"100%", padding:"9px 14px", background:"#f0ede6", border:"1px solid #d8d4cc", borderRadius:3, cursor:"pointer", fontFamily:"monospace", fontSize:"0.72rem", textTransform:"uppercase", textAlign:"left", display:"flex", justifyContent:"space-between" }}>
+            <span>📋 Personalizza contenuto dossier</span>
+            <span>{mostraDossier?"▲":"▼"}</span>
+          </button>
+          {mostraDossier && (
+            <div style={{ border:"1px solid #d8d4cc", borderTop:"none", borderRadius:"0 0 3px 3px", padding:14 }}>
+              <div style={{ fontSize:"0.62rem", color:"#888", marginBottom:10 }}>Seleziona le sezioni da includere nel dossier per questo ordine:</div>
+              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
+                {dossierOpz.map(o=>(
+                  <div key={o.id} onClick={()=>toggleOpz(o.id)} style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 10px", border:"1px solid", borderRadius:3, cursor:"pointer", borderColor:o.incluso?"#2e7d32":"#ddd", background:o.incluso?"#e8f5e9":"#fafaf8" }}>
+                    <div style={{ width:14, height:14, borderRadius:2, border:"1.5px solid", borderColor:o.incluso?"#2e7d32":"#ccc", background:o.incluso?"#2e7d32":"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                      {o.incluso&&<span style={{ color:"#fff", fontSize:"0.6rem", lineHeight:1 }}>✓</span>}
+                    </div>
+                    <span style={{ fontSize:"0.72rem", color:o.incluso?"#1a1a1a":"#888" }}>{o.label}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{ marginTop:10, fontSize:"0.65rem", color:"#aaa" }}>
+                {dossierOpz.filter(o=>o.incluso).length} di {dossierOpz.length} sezioni incluse
+              </div>
+            </div>
+          )}
         </div>
 
-        {/* Stato e note */}
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:14 }}>
+        {/* Sconto, stato, note */}
+        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12, marginBottom:14 }}>
+          <div>
+            <div style={{ fontSize:"0.6rem", textTransform:"uppercase", color:"#aaa", marginBottom:4 }}>Sconto (€)</div>
+            <input style={inp} type="number" placeholder="0" value={sconto} onChange={e=>setSconto(e.target.value)} />
+          </div>
           <div>
             <div style={{ fontSize:"0.6rem", textTransform:"uppercase", color:"#aaa", marginBottom:4 }}>Stato pagamento</div>
             <select value={stato} onChange={e=>setStato(e.target.value)} style={{ ...inp, color:STATI_PAG_COLOR[stato] }}>
-              {STATI_PAGAMENTO.map(s=><option key={s} value={s}>{STATI_PAG_LABEL[s]}</option>)}
+              {STATI_PAG.map(s=><option key={s} value={s}>{STATI_PAG_LABEL[s]}</option>)}
             </select>
           </div>
           <div>
@@ -448,8 +526,24 @@ function OrdineModal({ cliente, onSave, onClose }) {
           </div>
         </div>
 
+        {/* Riepilogo prezzi */}
+        <div style={{ background:"#f5f2eb", border:"1px solid #d8d4cc", borderRadius:3, padding:"10px 14px", marginBottom:16 }}>
+          <div style={{ display:"flex", justifyContent:"space-between", fontSize:"0.78rem", color:"#555", marginBottom:4 }}>
+            <span>Subtotale</span><span>€{subtotale.toFixed(2)}</span>
+          </div>
+          {scontoVal>0&&<div style={{ display:"flex", justifyContent:"space-between", fontSize:"0.78rem", color:"#2e7d32", marginBottom:4 }}>
+            <span>Sconto</span><span>- €{scontoVal.toFixed(2)}</span>
+          </div>}
+          <div style={{ display:"flex", justifyContent:"space-between", fontSize:"1rem", fontWeight:"bold", color:"#1a1a1a", borderTop:"1px solid #ccc", paddingTop:6, marginTop:4 }}>
+            <span>TOTALE</span><span>€{totale}</span>
+          </div>
+        </div>
+
         <div style={{ display:"flex", gap:10 }}>
-          <button onClick={()=>onSave({ id:Date.now(), data:new Date().toLocaleString("it-IT"), voci, totale, stato, note })} style={{ flex:1, padding:12, background:"#b8302a", color:"#fff", border:"none", borderRadius:3, cursor:"pointer", fontFamily:"monospace", fontSize:"0.75rem", textTransform:"uppercase" }}>📋 Crea ordine</button>
+          <button onClick={()=>onSave({ id:Date.now(), data:new Date().toLocaleString("it-IT"), voci, totale:parseFloat(totale), sconto:scontoVal, stato, note, dossierPersonalizzato:dossierOpz })}
+            style={{ flex:1, padding:12, background:"#b8302a", color:"#fff", border:"none", borderRadius:3, cursor:"pointer", fontFamily:"monospace", fontSize:"0.75rem", textTransform:"uppercase" }}>
+            📋 Crea ordine
+          </button>
           <button onClick={onClose} style={{ flex:1, padding:12, background:"#e8e4dc", color:"#555", border:"none", borderRadius:3, cursor:"pointer", fontFamily:"monospace", fontSize:"0.75rem", textTransform:"uppercase" }}>Annulla</button>
         </div>
       </div>
@@ -489,98 +583,58 @@ function App() {
   const [checklist, setChecklist] = useState(CHECKLIST_ITEMS.map(i=>({...i,stato:"non_verificato",note:""})));
 
   useEffect(() => {
-    if (view==="archivio") { setLoading(true); loadReports().then(r=>{setReports(r);setLoading(false);}); }
-    if (view==="clienti")  { setLoading(true); loadClienti().then(c=>{setClienti(c);setLoading(false);}); }
+    if(view==="archivio"){setLoading(true);loadReports().then(r=>{setReports(r);setLoading(false)});}
+    if(view==="clienti") {setLoading(true);loadClienti().then(c=>{setClienti(c);setLoading(false)});}
   }, [view]);
 
-  const toggleSrc = id => setSources(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
-  const data      = { tab, nome, cognome, cf, citta, ragione, piva, sede, contesto, note, sources };
+  const toggleSrc = id=>setSources(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
+  const data      = {tab,nome,cognome,cf,citta,ragione,piva,sede,contesto,note,sources};
   const soggetto  = tab==="persona"?(nome+" "+cognome).trim():ragione;
   const canSearch = tab==="persona"?nome.trim().length>0:ragione.trim().length>0;
   const links     = buildLinks(data);
   const sections  = generateSections(data);
 
-  const filteredReports = reports.filter(r => { if(!searchR.trim())return true; const q=searchR.toLowerCase(); return (r.soggetto||"").toLowerCase().includes(q)||(r.cf||"").toLowerCase().includes(q)||(r.piva||"").toLowerCase().includes(q)||(r.contesto||"").toLowerCase().includes(q); });
-  const filteredClienti = clienti.filter(c => { if(!searchC.trim())return true; const q=searchC.toLowerCase(); return (c.nome||"").toLowerCase().includes(q)||(c.email||"").toLowerCase().includes(q)||(c.piva||"").toLowerCase().includes(q)||(c.cf||"").toLowerCase().includes(q); });
+  const filtR = reports.filter(r=>{if(!searchR.trim())return true;const q=searchR.toLowerCase();return(r.soggetto||"").toLowerCase().includes(q)||(r.cf||"").toLowerCase().includes(q)||(r.piva||"").toLowerCase().includes(q)||(r.contesto||"").toLowerCase().includes(q);});
+  const filtC = clienti.filter(c=>{if(!searchC.trim())return true;const q=searchC.toLowerCase();return(c.nome||"").toLowerCase().includes(q)||(c.email||"").toLowerCase().includes(q)||(c.piva||"").toLowerCase().includes(q)||(c.cf||"").toLowerCase().includes(q);});
 
-  const showMsg = m => { setMsg(m); setTimeout(()=>setMsg(""),3000); };
+  const showMsg = m=>{setMsg(m);setTimeout(()=>setMsg(""),3000);};
 
-  const handleSave = async () => {
+  const handleSave = async()=>{
     setSaving(true);
-    const report = { id:Date.now(), data:new Date().toLocaleString("it-IT"), soggetto, tab, contesto:contesto||"Recupero crediti", note, cf, piva, sections, links, checklist };
-    const existing = await loadReports();
-    const ok = await saveReports([report,...existing]);
-    ok ? showMsg("✅ Salvato in archivio!") : showMsg("❌ Errore salvataggio");
+    const report={id:Date.now(),data:new Date().toLocaleString("it-IT"),soggetto,tab,contesto:contesto||"Recupero crediti",note,cf,piva,sections,links,checklist};
+    const ex=await loadReports();
+    const ok=await saveReports([report,...ex]);
+    ok?showMsg("✅ Salvato in archivio!"):showMsg("❌ Errore salvataggio");
     setSaving(false);
   };
 
-  const handleDeleteReport = async id => {
-    const updated = reports.filter(r=>r.id!==id);
-    const ok = await saveReports(updated);
-    if(ok){setReports(updated);showMsg("🗑 Report eliminato");} else showMsg("❌ Errore");
-    setDelConf(null);
-  };
+  const handleDelReport=async id=>{const u=reports.filter(r=>r.id!==id);const ok=await saveReports(u);if(ok){setReports(u);showMsg("🗑 Eliminato");}else showMsg("❌ Errore");setDelConf(null);};
+  const handleEditReport=async updated=>{const nl=reports.map(r=>r.id===updated.id?{...updated,modificato:new Date().toLocaleString("it-IT")}:r);const ok=await saveReports(nl);if(ok){setReports(nl);showMsg("✅ Salvato");}else showMsg("❌ Errore");setEditRep(null);};
+  const handleSaveCl=async c=>{const ex=await loadClienti();const isNew=!editCl;const u=isNew?[c,...ex]:ex.map(x=>x.id===c.id?c:x);const ok=await saveClienti(u);if(ok){setClienti(u);showMsg(isNew?"✅ Cliente aggiunto!":"✅ Cliente aggiornato!");}else showMsg("❌ Errore");setNewCl(false);setEditCl(null);};
+  const handleDelCl=async id=>{const u=clienti.filter(c=>c.id!==id);const ok=await saveClienti(u);if(ok){setClienti(u);showMsg("🗑 Cliente eliminato");}else showMsg("❌ Errore");setDelClConf(null);};
+  const handleSaveOrdine=async ordine=>{const u=clienti.map(c=>c.id===ordineFor.id?{...c,ordini:[ordine,...(c.ordini||[])]}:c);const ok=await saveClienti(u);if(ok){setClienti(u);showMsg("✅ Ordine creato!");}else showMsg("❌ Errore");setOrdineFor(null);};
+  const handleStatoPag=async(cid,oid,stato)=>{const u=clienti.map(c=>c.id===cid?{...c,ordini:(c.ordini||[]).map(o=>o.id===oid?{...o,stato}:o)}:c);const ok=await saveClienti(u);if(ok){setClienti(u);showMsg("✅ Stato aggiornato");}else showMsg("❌ Errore");};
 
-  const handleEditReport = async updated => {
-    const newList = reports.map(r=>r.id===updated.id?{...updated,modificato:new Date().toLocaleString("it-IT")}:r);
-    const ok = await saveReports(newList);
-    if(ok){setReports(newList);showMsg("✅ Modifiche salvate");} else showMsg("❌ Errore");
-    setEditRep(null);
-  };
+  const inp={width:"100%",padding:"9px 12px",border:"1px solid #ccc",borderRadius:3,fontFamily:"monospace",fontSize:"0.82rem",background:"#fafaf8",outline:"none"};
+  const lbl={display:"block",fontSize:"0.6rem",textTransform:"uppercase",letterSpacing:"0.08em",color:"#888",marginBottom:5};
+  const btnS=(bg,dis)=>({padding:"12px 0",background:dis?"#ccc":bg,color:"#fff",border:"none",borderRadius:3,cursor:dis?"not-allowed":"pointer",fontFamily:"monospace",fontSize:"0.75rem",textTransform:"uppercase",letterSpacing:"0.05em",width:"100%"});
+  const navBtn=(v,label)=><button onClick={()=>setView(v)} style={{background:view===v?"#1a1a1a":"#e8e4dc",color:view===v?"#fff":"#555",border:"none",borderRadius:3,padding:"7px 14px",cursor:"pointer",fontFamily:"monospace",fontSize:"0.68rem",textTransform:"uppercase"}}>{label}</button>;
 
-  const handleSaveCliente = async cliente => {
-    const existing = await loadClienti();
-    const isNew = !editCl;
-    const updated = isNew ? [cliente,...existing] : existing.map(c=>c.id===cliente.id?cliente:c);
-    const ok = await saveClienti(updated);
-    if(ok){setClienti(updated);showMsg(isNew?"✅ Cliente aggiunto!":"✅ Cliente aggiornato!");} else showMsg("❌ Errore");
-    setNewCl(false); setEditCl(null);
-  };
-
-  const handleDeleteCliente = async id => {
-    const updated = clienti.filter(c=>c.id!==id);
-    const ok = await saveClienti(updated);
-    if(ok){setClienti(updated);showMsg("🗑 Cliente eliminato");} else showMsg("❌ Errore");
-    setDelClConf(null);
-  };
-
-  const handleSaveOrdine = async ordine => {
-    const updated = clienti.map(c => c.id===ordineFor.id ? {...c, ordini:[ordine,...(c.ordini||[])]} : c);
-    const ok = await saveClienti(updated);
-    if(ok){setClienti(updated);showMsg("✅ Ordine creato!");} else showMsg("❌ Errore");
-    setOrdineFor(null);
-  };
-
-  const handleStatoPagamento = async (clienteId, ordineId, nuovoStato) => {
-    const updated = clienti.map(c => c.id===clienteId ? {...c, ordini:(c.ordini||[]).map(o=>o.id===ordineId?{...o,stato:nuovoStato}:o)} : c);
-    const ok = await saveClienti(updated);
-    if(ok){setClienti(updated);showMsg("✅ Stato aggiornato");} else showMsg("❌ Errore");
-  };
-
-  const inp = { width:"100%", padding:"9px 12px", border:"1px solid #ccc", borderRadius:3, fontFamily:"monospace", fontSize:"0.82rem", background:"#fafaf8", outline:"none" };
-  const lbl = { display:"block", fontSize:"0.6rem", textTransform:"uppercase", letterSpacing:"0.08em", color:"#888", marginBottom:5 };
-  const btnStyle = (bg, disabled) => ({ padding:"12px 0", background:disabled?"#ccc":bg, color:"#fff", border:"none", borderRadius:3, cursor:disabled?"not-allowed":"pointer", fontFamily:"monospace", fontSize:"0.75rem", textTransform:"uppercase", letterSpacing:"0.05em", width:"100%" });
-
-  const navBtn = (v, label) => (
-    <button onClick={()=>setView(v)} style={{ background:view===v?"#1a1a1a":"#e8e4dc", color:view===v?"#fff":"#555", border:"none", borderRadius:3, padding:"7px 14px", cursor:"pointer", fontFamily:"monospace", fontSize:"0.68rem", textTransform:"uppercase" }}>{label}</button>
-  );
-
-  // totale fatturato cliente
-  const totaleCliente = c => (c.ordini||[]).reduce((acc,o)=>acc+(o.totale||0),0);
-  const arretratiCliente = c => (c.ordini||[]).filter(o=>o.stato==="arretrato").reduce((acc,o)=>acc+(o.totale||0),0);
+  const totCl=c=>(c.ordini||[]).reduce((a,o)=>a+(o.totale||0),0);
+  const arrCl=c=>(c.ordini||[]).filter(o=>o.stato==="arretrato").reduce((a,o)=>a+(o.totale||0),0);
 
   return (
-    <div style={{ background:"#f5f2eb", minHeight:"100vh", padding:"28px 20px" }}>
-      <div style={{ maxWidth:860, margin:"0 auto" }}>
+    <div style={{background:"#f5f2eb",minHeight:"100vh",padding:"28px 20px"}}>
+      <div style={{maxWidth:860,margin:"0 auto"}}>
 
         {/* Header */}
-        <div style={{ borderBottom:"2px solid #1a1a1a", paddingBottom:16, marginBottom:24 }}>
-          <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:10 }}>
+        <div style={{borderBottom:"2px solid #1a1a1a",paddingBottom:16,marginBottom:24}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
             <div>
-              <h1 style={{ fontFamily:"Georgia,serif", fontSize:"2.2rem", lineHeight:1 }}>Lex<span style={{ color:"#b8302a" }}>Trace</span></h1>
-              <p style={{ fontSize:"0.65rem", color:"#888", marginTop:5, textTransform:"uppercase", letterSpacing:"0.06em" }}>Ricerca investigativa · Fonti pubbliche italiane</p>
+              <h1 style={{fontFamily:"Georgia,serif",fontSize:"2.2rem",lineHeight:1}}>Lex<span style={{color:"#b8302a"}}>Trace</span></h1>
+              <p style={{fontSize:"0.65rem",color:"#888",marginTop:5,textTransform:"uppercase",letterSpacing:"0.06em"}}>Ricerca investigativa · Fonti pubbliche italiane</p>
             </div>
-            <div style={{ display:"flex", gap:8, flexWrap:"wrap" }}>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
               {navBtn("form","🔍 Ricerca")}
               {navBtn("archivio","📁 Archivio"+(reports.length>0?" ("+reports.length+")":""))}
               {navBtn("clienti","👥 Clienti"+(clienti.length>0?" ("+clienti.length+")":""))}
@@ -588,103 +642,96 @@ function App() {
           </div>
         </div>
 
-        {msg && <div style={{ marginBottom:16, padding:"10px 16px", background: msg.includes("✅")||msg.includes("🗑")?"#e8f5e9":"#ffebee", borderRadius:3, fontSize:"0.8rem", color: msg.includes("✅")||msg.includes("🗑")?"#2e7d32":"#b8302a" }}>{msg}</div>}
+        {msg&&<div style={{marginBottom:16,padding:"10px 16px",background:msg.includes("✅")||msg.includes("🗑")?"#e8f5e9":"#ffebee",borderRadius:3,fontSize:"0.8rem",color:msg.includes("✅")||msg.includes("🗑")?"#2e7d32":"#b8302a"}}>{msg}</div>}
 
         {/* ── RICERCA ── */}
-        {view === "form" && (
+        {view==="form"&&(
           <>
-            <div style={{ display:"flex", borderBottom:"1px solid #ccc", marginBottom:20 }}>
-              {[["persona","👤 Persona fisica"],["azienda","🏢 Azienda"]].map(([t,l]) => (
-                <button key={t} onClick={()=>setTab(t)} style={{ background:"none", border:"none", marginBottom:-1, cursor:"pointer", fontFamily:"monospace", borderBottom:tab===t?"2px solid #b8302a":"2px solid transparent", padding:"9px 20px", fontSize:"0.72rem", textTransform:"uppercase", color:tab===t?"#1a1a1a":"#888" }}>{l}</button>
+            <div style={{display:"flex",borderBottom:"1px solid #ccc",marginBottom:20}}>
+              {[["persona","👤 Persona fisica"],["azienda","🏢 Azienda"]].map(([t,l])=>(
+                <button key={t} onClick={()=>setTab(t)} style={{background:"none",border:"none",marginBottom:-1,cursor:"pointer",fontFamily:"monospace",borderBottom:tab===t?"2px solid #b8302a":"2px solid transparent",padding:"9px 20px",fontSize:"0.72rem",textTransform:"uppercase",color:tab===t?"#1a1a1a":"#888"}}>{l}</button>
               ))}
             </div>
-
-            <div style={{ background:"#fff", border:"1px solid #d8d4cc", borderRadius:4, padding:22, marginBottom:16 }}>
-              <div style={{ fontSize:"0.6rem", textTransform:"uppercase", color:"#aaa", letterSpacing:"0.1em", marginBottom:16, paddingBottom:8, borderBottom:"1px solid #eee" }}>Dati soggetto</div>
-              {tab==="persona" ? (
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+            <div style={{background:"#fff",border:"1px solid #d8d4cc",borderRadius:4,padding:22,marginBottom:16}}>
+              <div style={{fontSize:"0.6rem",textTransform:"uppercase",color:"#aaa",letterSpacing:"0.1em",marginBottom:16,paddingBottom:8,borderBottom:"1px solid #eee"}}>Dati soggetto</div>
+              {tab==="persona"?(
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
                   <div><label style={lbl}>Nome *</label><input style={inp} value={nome} onChange={e=>setNome(e.target.value)} placeholder="Mario" /></div>
                   <div><label style={lbl}>Cognome</label><input style={inp} value={cognome} onChange={e=>setCognome(e.target.value)} placeholder="Rossi" /></div>
                   <div><label style={lbl}>Codice Fiscale</label><input style={inp} value={cf} onChange={e=>setCf(e.target.value)} placeholder="RSSMRA80A01H501U" /></div>
                   <div><label style={lbl}>Città</label><input style={inp} value={citta} onChange={e=>setCitta(e.target.value)} placeholder="Milano" /></div>
-                  <div style={{ gridColumn:"1/-1" }}><label style={lbl}>Contesto</label><input style={inp} value={contesto} onChange={e=>setContesto(e.target.value)} placeholder="es. recupero credito €15.000" /></div>
+                  <div style={{gridColumn:"1/-1"}}><label style={lbl}>Contesto</label><input style={inp} value={contesto} onChange={e=>setContesto(e.target.value)} placeholder="es. recupero credito €15.000" /></div>
                 </div>
-              ) : (
-                <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12 }}>
+              ):(
+                <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
                   <div><label style={lbl}>Ragione Sociale *</label><input style={inp} value={ragione} onChange={e=>setRagione(e.target.value)} placeholder="Rossi Srl" /></div>
                   <div><label style={lbl}>Partita IVA</label><input style={inp} value={piva} onChange={e=>setPiva(e.target.value)} placeholder="01234567890" /></div>
                   <div><label style={lbl}>Sede</label><input style={inp} value={sede} onChange={e=>setSede(e.target.value)} placeholder="Via Roma 1, Milano" /></div>
                   <div><label style={lbl}>Contesto</label><input style={inp} value={contesto} onChange={e=>setContesto(e.target.value)} placeholder="es. recupero credito €50.000" /></div>
                 </div>
               )}
-              <div style={{ marginTop:12 }}><label style={lbl}>Note personali</label><textarea style={{ ...inp, resize:"vertical" }} rows={2} value={note} onChange={e=>setNote(e.target.value)} placeholder="Informazioni aggiuntive..." /></div>
+              <div style={{marginTop:12}}><label style={lbl}>Note personali</label><textarea style={{...inp,resize:"vertical"}} rows={2} value={note} onChange={e=>setNote(e.target.value)} placeholder="Informazioni aggiuntive..." /></div>
             </div>
-
-            <div style={{ background:"#fff", border:"1px solid #d8d4cc", borderRadius:4, padding:22, marginBottom:16 }}>
-              <div style={{ fontSize:"0.6rem", textTransform:"uppercase", color:"#aaa", letterSpacing:"0.1em", marginBottom:14, paddingBottom:8, borderBottom:"1px solid #eee" }}>Fonti</div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:8 }}>
-                {SOURCES.map(s => (
-                  <div key={s.id} onClick={()=>toggleSrc(s.id)} style={{ display:"flex", alignItems:"center", gap:10, padding:"9px 14px", border:"1px solid", borderRadius:3, cursor:"pointer", borderColor:sources.includes(s.id)?"#b8302a":"#ddd", background:sources.includes(s.id)?"#fff5f5":"#fafaf8" }}>
-                    <div style={{ width:9, height:9, borderRadius:2, flexShrink:0, border:"1.5px solid", borderColor:sources.includes(s.id)?"#b8302a":"#ccc", background:sources.includes(s.id)?"#b8302a":"transparent" }} />
-                    <div><div style={{ fontSize:"0.75rem", color:"#1a1a1a" }}>{s.name}</div><div style={{ fontSize:"0.6rem", color:"#aaa" }}>{s.cost}</div></div>
+            <div style={{background:"#fff",border:"1px solid #d8d4cc",borderRadius:4,padding:22,marginBottom:16}}>
+              <div style={{fontSize:"0.6rem",textTransform:"uppercase",color:"#aaa",letterSpacing:"0.1em",marginBottom:14,paddingBottom:8,borderBottom:"1px solid #eee"}}>Fonti</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
+                {SOURCES.map(s=>(
+                  <div key={s.id} onClick={()=>toggleSrc(s.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",border:"1px solid",borderRadius:3,cursor:"pointer",borderColor:sources.includes(s.id)?"#b8302a":"#ddd",background:sources.includes(s.id)?"#fff5f5":"#fafaf8"}}>
+                    <div style={{width:9,height:9,borderRadius:2,flexShrink:0,border:"1.5px solid",borderColor:sources.includes(s.id)?"#b8302a":"#ccc",background:sources.includes(s.id)?"#b8302a":"transparent"}} />
+                    <div><div style={{fontSize:"0.75rem",color:"#1a1a1a"}}>{s.name}</div><div style={{fontSize:"0.6rem",color:"#aaa"}}>{s.cost}</div></div>
                   </div>
                 ))}
               </div>
             </div>
-
-            {canSearch && (
+            {canSearch&&(
               <>
-                <div style={{ display:"flex", borderBottom:"1px solid #ccc", marginBottom:16 }}>
-                  {[["dossier","📄 Dossier"],["links","🔗 Link ricerca"],["checklist","✅ Checklist"]].map(([v,l]) => (
-                    <button key={v} onClick={()=>setSubview(v)} style={{ background:"none", border:"none", marginBottom:-1, cursor:"pointer", fontFamily:"monospace", borderBottom:subview===v?"2px solid #b8302a":"2px solid transparent", padding:"8px 16px", fontSize:"0.68rem", textTransform:"uppercase", color:subview===v?"#1a1a1a":"#888" }}>{l}</button>
+                <div style={{display:"flex",borderBottom:"1px solid #ccc",marginBottom:16}}>
+                  {[["dossier","📄 Dossier"],["links","🔗 Link ricerca"],["checklist","✅ Checklist"]].map(([v,l])=>(
+                    <button key={v} onClick={()=>setSubview(v)} style={{background:"none",border:"none",marginBottom:-1,cursor:"pointer",fontFamily:"monospace",borderBottom:subview===v?"2px solid #b8302a":"2px solid transparent",padding:"8px 16px",fontSize:"0.68rem",textTransform:"uppercase",color:subview===v?"#1a1a1a":"#888"}}>{l}</button>
                   ))}
                 </div>
-
-                {subview==="dossier" && (
+                {subview==="dossier"&&(
                   <div>
-                    {sections.map((s,i) => (
-                      <div key={i} style={{ background:"#fff", border:"1px solid #d8d4cc", borderRadius:4, marginBottom:10, overflow:"hidden" }}>
-                        <div style={{ background:i===0?"#1a1a1a":"#2e2e2e", color:"#f5f2eb", padding:"10px 18px", fontSize:i===0?"0.75rem":"0.65rem", letterSpacing:"0.1em", textTransform:"uppercase" }}>{s.title}</div>
-                        <pre style={{ padding:"16px 18px", margin:0, whiteSpace:"pre-wrap", fontSize:"0.78rem", lineHeight:1.9, color:"#2a2a2a", fontFamily:"monospace" }}>{s.content}</pre>
+                    {sections.map((s,i)=>(
+                      <div key={i} style={{background:"#fff",border:"1px solid #d8d4cc",borderRadius:4,marginBottom:10,overflow:"hidden"}}>
+                        <div style={{background:i===0?"#1a1a1a":"#2e2e2e",color:"#f5f2eb",padding:"10px 18px",fontSize:i===0?"0.75rem":"0.65rem",letterSpacing:"0.1em",textTransform:"uppercase"}}>{s.title}</div>
+                        <pre style={{padding:"16px 18px",margin:0,whiteSpace:"pre-wrap",fontSize:"0.78rem",lineHeight:1.9,color:"#2a2a2a",fontFamily:"monospace"}}>{s.content}</pre>
                       </div>
                     ))}
-                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginTop:4 }}>
-                      <button onClick={handleSave} disabled={saving} style={btnStyle("#2e7d32",saving)}>{saving?"Salvataggio...":"💾 Salva in archivio"}</button>
-                      <button onClick={()=>exportPDF({soggetto,sections,checklist,note})} style={btnStyle("#b8302a",false)}>📥 Scarica PDF</button>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginTop:4}}>
+                      <button onClick={handleSave} disabled={saving} style={btnS("#2e7d32",saving)}>{saving?"Salvataggio...":"💾 Salva in archivio"}</button>
+                      <button onClick={()=>exportPDF({soggetto,sections,checklist,note})} style={btnS("#b8302a",false)}>📥 Scarica PDF</button>
                     </div>
                   </div>
                 )}
-
-                {subview==="links" && (
+                {subview==="links"&&(
                   <div>
-                    {links.map((group,gi) => (
-                      <div key={gi} style={{ background:"#fff", border:"1px solid #d8d4cc", borderRadius:4, marginBottom:10, overflow:"hidden" }}>
-                        <div style={{ background:"#2e2e2e", color:"#f5f2eb", padding:"9px 16px", fontSize:"0.65rem", textTransform:"uppercase", letterSpacing:"0.1em" }}>{group.label}</div>
-                        {group.links.map((link,li) => (
+                    {links.map((group,gi)=>(
+                      <div key={gi} style={{background:"#fff",border:"1px solid #d8d4cc",borderRadius:4,marginBottom:10,overflow:"hidden"}}>
+                        <div style={{background:"#2e2e2e",color:"#f5f2eb",padding:"9px 16px",fontSize:"0.65rem",textTransform:"uppercase",letterSpacing:"0.1em"}}>{group.label}</div>
+                        {group.links.map((link,li)=>(
                           <a key={li} href={link.url} target="_blank" rel="noopener noreferrer"
-                            style={{ display:"flex", justifyContent:"space-between", padding:"10px 16px", background:"#fff", color:"inherit", borderBottom:li<group.links.length-1?"1px solid #f0ede6":"none" }}
+                            style={{display:"flex",justifyContent:"space-between",padding:"10px 16px",background:"#fff",color:"inherit",borderBottom:li<group.links.length-1?"1px solid #f0ede6":"none"}}
                             onMouseEnter={e=>e.currentTarget.style.background="#fff8f8"}
-                            onMouseLeave={e=>e.currentTarget.style.background="#fff"}
-                          >
-                            <span style={{ fontSize:"0.78rem", color:"#1a1a1a" }}>{link.name}</span>
-                            <span style={{ fontSize:"0.65rem", color:"#b8302a" }}>APRI →</span>
+                            onMouseLeave={e=>e.currentTarget.style.background="#fff"}>
+                            <span style={{fontSize:"0.78rem",color:"#1a1a1a"}}>{link.name}</span>
+                            <span style={{fontSize:"0.65rem",color:"#b8302a"}}>APRI →</span>
                           </a>
                         ))}
                       </div>
                     ))}
-                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginTop:8 }}>
-                      <button onClick={handleSave} disabled={saving} style={btnStyle("#2e7d32",saving)}>{saving?"Salvataggio...":"💾 Salva in archivio"}</button>
-                      <button onClick={()=>exportPDF({soggetto,sections,checklist,note})} style={btnStyle("#b8302a",false)}>📥 Scarica PDF</button>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginTop:8}}>
+                      <button onClick={handleSave} disabled={saving} style={btnS("#2e7d32",saving)}>{saving?"Salvataggio...":"💾 Salva in archivio"}</button>
+                      <button onClick={()=>exportPDF({soggetto,sections,checklist,note})} style={btnS("#b8302a",false)}>📥 Scarica PDF</button>
                     </div>
                   </div>
                 )}
-
-                {subview==="checklist" && (
+                {subview==="checklist"&&(
                   <div>
                     <Checklist checklist={checklist} onChange={setChecklist} />
-                    <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginTop:12 }}>
-                      <button onClick={handleSave} disabled={saving} style={btnStyle("#2e7d32",saving)}>{saving?"Salvataggio...":"💾 Salva in archivio"}</button>
-                      <button onClick={()=>exportPDF({soggetto,sections,checklist,note})} style={btnStyle("#b8302a",false)}>📥 Scarica PDF</button>
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginTop:12}}>
+                      <button onClick={handleSave} disabled={saving} style={btnS("#2e7d32",saving)}>{saving?"Salvataggio...":"💾 Salva in archivio"}</button>
+                      <button onClick={()=>exportPDF({soggetto,sections,checklist,note})} style={btnS("#b8302a",false)}>📥 Scarica PDF</button>
                     </div>
                   </div>
                 )}
@@ -694,138 +741,145 @@ function App() {
         )}
 
         {/* ── ARCHIVIO ── */}
-        {view==="archivio" && (
+        {view==="archivio"&&(
           <div>
-            <div style={{ position:"relative", marginBottom:20 }}>
-              <input style={{ ...inp, paddingLeft:36 }} value={searchR} onChange={e=>setSearchR(e.target.value)} placeholder="Cerca per nome, CF, P.IVA, contesto..." />
-              <span style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", color:"#aaa" }}>🔍</span>
-              {searchR && <span onClick={()=>setSearchR("")} style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)", cursor:"pointer", color:"#aaa" }}>✕</span>}
+            <div style={{position:"relative",marginBottom:20}}>
+              <input style={{...inp,paddingLeft:36}} value={searchR} onChange={e=>setSearchR(e.target.value)} placeholder="Cerca per nome, CF, P.IVA, contesto..." />
+              <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"#aaa"}}>🔍</span>
+              {searchR&&<span onClick={()=>setSearchR("")} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",cursor:"pointer",color:"#aaa"}}>✕</span>}
             </div>
-            {loading && <div style={{ color:"#888", padding:20 }}>Caricamento...</div>}
-            {!loading && filteredReports.length===0 && <div style={{ background:"#fff", border:"1px solid #d8d4cc", borderRadius:4, padding:48, textAlign:"center", color:"#bbb", fontSize:"0.75rem", textTransform:"uppercase" }}>{searchR?`Nessun risultato per "${searchR}"`:"Nessun report salvato"}</div>}
-            {!loading && filteredReports.map(r => (
-              <div key={r.id} style={{ background:"#fff", border:"1px solid #d8d4cc", borderRadius:4, marginBottom:12, overflow:"hidden" }}>
-                <div style={{ background:"#1a1a1a", color:"#f5f2eb", padding:"12px 18px" }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", flexWrap:"wrap", gap:8 }}>
+            {loading&&<div style={{color:"#888",padding:20}}>Caricamento...</div>}
+            {!loading&&filtR.length===0&&<div style={{background:"#fff",border:"1px solid #d8d4cc",borderRadius:4,padding:48,textAlign:"center",color:"#bbb",fontSize:"0.75rem",textTransform:"uppercase"}}>{searchR?`Nessun risultato per "${searchR}"`:"Nessun report salvato"}</div>}
+            {!loading&&filtR.map(r=>(
+              <div key={r.id} style={{background:"#fff",border:"1px solid #d8d4cc",borderRadius:4,marginBottom:12,overflow:"hidden"}}>
+                <div style={{background:"#1a1a1a",color:"#f5f2eb",padding:"12px 18px"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:8}}>
                     <div>
-                      <div style={{ fontSize:"0.88rem", fontWeight:"bold" }}>{r.soggetto}</div>
-                      <div style={{ fontSize:"0.62rem", color:"#aaa", marginTop:2 }}>{r.tab==="persona"?"👤":"🏢"} {r.contesto}{r.cf&&<span style={{ marginLeft:10 }}>CF: {r.cf}</span>}{r.piva&&<span style={{ marginLeft:10 }}>P.IVA: {r.piva}</span>}</div>
-                      <div style={{ fontSize:"0.58rem", color:"#666", marginTop:2 }}>{r.data}{r.modificato?" · Mod: "+r.modificato:""}{r.checklist&&<span style={{ marginLeft:10 }}>· Verifiche: {r.checklist.filter(i=>i.stato==="completato").length}/{r.checklist.length} ✓</span>}</div>
+                      <div style={{fontSize:"0.88rem",fontWeight:"bold"}}>{r.soggetto}</div>
+                      <div style={{fontSize:"0.62rem",color:"#aaa",marginTop:2}}>{r.tab==="persona"?"👤":"🏢"} {r.contesto}{r.cf&&<span style={{marginLeft:10}}>CF: {r.cf}</span>}{r.piva&&<span style={{marginLeft:10}}>P.IVA: {r.piva}</span>}</div>
+                      <div style={{fontSize:"0.58rem",color:"#666",marginTop:2}}>{r.data}{r.modificato?" · Mod: "+r.modificato:""}{r.checklist&&<span style={{marginLeft:10}}>· Verifiche: {r.checklist.filter(i=>i.stato==="completato").length}/{r.checklist.length} ✓</span>}</div>
                     </div>
-                    <div style={{ display:"flex", gap:6 }}>
-                      <button onClick={()=>exportPDF(r)} style={{ background:"#b8302a", color:"#fff", border:"none", borderRadius:2, padding:"5px 10px", cursor:"pointer", fontFamily:"monospace", fontSize:"0.62rem", textTransform:"uppercase" }}>📥 PDF</button>
-                      <button onClick={()=>setEditRep(r)} style={{ background:"#1565c0", color:"#fff", border:"none", borderRadius:2, padding:"5px 10px", cursor:"pointer", fontFamily:"monospace", fontSize:"0.62rem", textTransform:"uppercase" }}>✏️</button>
-                      <button onClick={()=>setDelConf(r.id)} style={{ background:"#555", color:"#fff", border:"none", borderRadius:2, padding:"5px 10px", cursor:"pointer", fontFamily:"monospace", fontSize:"0.62rem", textTransform:"uppercase" }}>🗑</button>
+                    <div style={{display:"flex",gap:6}}>
+                      <button onClick={()=>exportPDF(r)} style={{background:"#b8302a",color:"#fff",border:"none",borderRadius:2,padding:"5px 10px",cursor:"pointer",fontFamily:"monospace",fontSize:"0.62rem",textTransform:"uppercase"}}>📥 PDF</button>
+                      <button onClick={()=>setEditRep(r)} style={{background:"#1565c0",color:"#fff",border:"none",borderRadius:2,padding:"5px 10px",cursor:"pointer",fontFamily:"monospace",fontSize:"0.62rem",textTransform:"uppercase"}}>✏️</button>
+                      <button onClick={()=>setDelConf(r.id)} style={{background:"#555",color:"#fff",border:"none",borderRadius:2,padding:"5px 10px",cursor:"pointer",fontFamily:"monospace",fontSize:"0.62rem",textTransform:"uppercase"}}>🗑</button>
                     </div>
                   </div>
                 </div>
-                {r.note && <div style={{ padding:"8px 18px", background:"#fff8f0", borderBottom:"1px solid #f0e8d8", fontSize:"0.75rem", color:"#7a5a1a" }}><strong>Note:</strong> {r.note}</div>}
-                {r.checklist?.some(i=>i.stato!=="non_verificato") && (
-                  <div style={{ padding:"8px 18px", background:"#f8fff8", borderBottom:"1px solid #e0f0e0" }}>
-                    <div style={{ display:"flex", flexWrap:"wrap", gap:5 }}>
-                      {r.checklist.filter(i=>i.stato!=="non_verificato").map(i => (
-                        <span key={i.id} style={{ fontSize:"0.62rem", padding:"2px 7px", borderRadius:10, background:i.stato==="completato"?"#e8f5e9":i.stato==="in_corso"?"#fff3e0":"#ffebee", color:i.stato==="completato"?"#2e7d32":i.stato==="in_corso"?"#e67e00":"#b8302a" }}>
+                {r.note&&<div style={{padding:"8px 18px",background:"#fff8f0",borderBottom:"1px solid #f0e8d8",fontSize:"0.75rem",color:"#7a5a1a"}}><strong>Note:</strong> {r.note}</div>}
+                {r.checklist?.some(i=>i.stato!=="non_verificato")&&(
+                  <div style={{padding:"8px 18px",background:"#f8fff8",borderBottom:"1px solid #e0f0e0"}}>
+                    <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+                      {r.checklist.filter(i=>i.stato!=="non_verificato").map(i=>(
+                        <span key={i.id} style={{fontSize:"0.62rem",padding:"2px 7px",borderRadius:10,background:i.stato==="completato"?"#e8f5e9":i.stato==="in_corso"?"#fff3e0":"#ffebee",color:i.stato==="completato"?"#2e7d32":i.stato==="in_corso"?"#e67e00":"#b8302a"}}>
                           {i.stato==="completato"?"✓":i.stato==="in_corso"?"◎":"✗"} {i.label.split("—")[0].trim()}
                         </span>
                       ))}
                     </div>
                   </div>
                 )}
-                <div style={{ padding:"12px 18px" }}>{r.sections?.[0]&&<pre style={{ fontSize:"0.72rem", color:"#555", whiteSpace:"pre-wrap", fontFamily:"monospace", lineHeight:1.7 }}>{r.sections[0].content}</pre>}</div>
+                <div style={{padding:"12px 18px"}}>{r.sections?.[0]&&<pre style={{fontSize:"0.72rem",color:"#555",whiteSpace:"pre-wrap",fontFamily:"monospace",lineHeight:1.7}}>{r.sections[0].content}</pre>}</div>
               </div>
             ))}
-            {!loading&&reports.length>0&&<div style={{ fontSize:"0.62rem", color:"#aaa", textAlign:"center", marginTop:8 }}>{filteredReports.length} di {reports.length} report{searchR?" (filtrati)":""}</div>}
+            {!loading&&reports.length>0&&<div style={{fontSize:"0.62rem",color:"#aaa",textAlign:"center",marginTop:8}}>{filtR.length} di {reports.length} report{searchR?" (filtrati)":""}</div>}
           </div>
         )}
 
         {/* ── CLIENTI ── */}
-        {view==="clienti" && (
+        {view==="clienti"&&(
           <div>
-            <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20, gap:12, flexWrap:"wrap" }}>
-              <div style={{ position:"relative", flex:1, minWidth:200 }}>
-                <input style={{ ...inp, paddingLeft:36 }} value={searchC} onChange={e=>setSearchC(e.target.value)} placeholder="Cerca cliente per nome, email, CF, P.IVA..." />
-                <span style={{ position:"absolute", left:12, top:"50%", transform:"translateY(-50%)", color:"#aaa" }}>🔍</span>
-                {searchC&&<span onClick={()=>setSearchC("")} style={{ position:"absolute", right:12, top:"50%", transform:"translateY(-50%)", cursor:"pointer", color:"#aaa" }}>✕</span>}
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,gap:12,flexWrap:"wrap"}}>
+              <div style={{position:"relative",flex:1,minWidth:200}}>
+                <input style={{...inp,paddingLeft:36}} value={searchC} onChange={e=>setSearchC(e.target.value)} placeholder="Cerca cliente per nome, email, CF, P.IVA..." />
+                <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"#aaa"}}>🔍</span>
+                {searchC&&<span onClick={()=>setSearchC("")} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",cursor:"pointer",color:"#aaa"}}>✕</span>}
               </div>
-              <button onClick={()=>setNewCl(true)} style={{ padding:"9px 20px", background:"#1a1a1a", color:"#fff", border:"none", borderRadius:3, cursor:"pointer", fontFamily:"monospace", fontSize:"0.72rem", textTransform:"uppercase", whiteSpace:"nowrap" }}>+ Nuovo cliente</button>
+              <button onClick={()=>setNewCl(true)} style={{padding:"9px 20px",background:"#1a1a1a",color:"#fff",border:"none",borderRadius:3,cursor:"pointer",fontFamily:"monospace",fontSize:"0.72rem",textTransform:"uppercase",whiteSpace:"nowrap"}}>+ Nuovo cliente</button>
             </div>
-
-            {loading && <div style={{ color:"#888", padding:20 }}>Caricamento...</div>}
-            {!loading && filteredClienti.length===0 && <div style={{ background:"#fff", border:"1px solid #d8d4cc", borderRadius:4, padding:48, textAlign:"center", color:"#bbb", fontSize:"0.75rem", textTransform:"uppercase" }}>{searchC?`Nessun cliente per "${searchC}"`:"Nessun cliente. Clicca + Nuovo cliente per iniziare."}</div>}
-
-            {!loading && filteredClienti.map(c => (
-              <div key={c.id} style={{ background:"#fff", border:"1px solid #d8d4cc", borderRadius:4, marginBottom:12, overflow:"hidden" }}>
-                {/* Header cliente */}
-                <div style={{ padding:"14px 18px", background:"#fff", borderBottom:"1px solid #eee" }}>
-                  <div style={{ display:"flex", justifyContent:"space-between", alignItems:"flex-start", flexWrap:"wrap", gap:8 }}>
-                    <div style={{ cursor:"pointer", flex:1 }} onClick={()=>setExpandCl(expandCl===c.id?null:c.id)}>
-                      <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                        <span style={{ fontSize:"1.1rem" }}>{c.tipo==="privato"?"👤":"🏢"}</span>
+            {loading&&<div style={{color:"#888",padding:20}}>Caricamento...</div>}
+            {!loading&&filtC.length===0&&<div style={{background:"#fff",border:"1px solid #d8d4cc",borderRadius:4,padding:48,textAlign:"center",color:"#bbb",fontSize:"0.75rem",textTransform:"uppercase"}}>{searchC?`Nessun cliente per "${searchC}"`:"Nessun cliente. Clicca + Nuovo cliente."}</div>}
+            {!loading&&filtC.map(c=>(
+              <div key={c.id} style={{background:"#fff",border:"1px solid #d8d4cc",borderRadius:4,marginBottom:12,overflow:"hidden"}}>
+                <div style={{padding:"14px 18px",borderBottom:expandCl===c.id?"1px solid #eee":"none"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:8}}>
+                    <div style={{cursor:"pointer",flex:1}} onClick={()=>setExpandCl(expandCl===c.id?null:c.id)}>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        <span style={{fontSize:"1.1rem"}}>{c.tipo==="privato"?"👤":"🏢"}</span>
                         <div>
-                          <div style={{ fontSize:"0.9rem", fontWeight:"bold", color:"#1a1a1a" }}>{c.nome}</div>
-                          <div style={{ fontSize:"0.65rem", color:"#888", marginTop:2 }}>
-                            {c.email&&<span style={{ marginRight:12 }}>✉ {c.email}</span>}
-                            {c.telefono&&<span style={{ marginRight:12 }}>📞 {c.telefono}</span>}
-                            {c.piva&&<span style={{ marginRight:12 }}>P.IVA: {c.piva}</span>}
+                          <div style={{fontSize:"0.9rem",fontWeight:"bold",color:"#1a1a1a"}}>{c.nome}</div>
+                          <div style={{fontSize:"0.65rem",color:"#888",marginTop:2}}>
+                            {c.email&&<span style={{marginRight:12}}>✉ {c.email}</span>}
+                            {c.telefono&&<span style={{marginRight:12}}>📞 {c.telefono}</span>}
+                            {c.piva&&<span style={{marginRight:12}}>P.IVA: {c.piva}</span>}
                             {c.cf&&<span>CF: {c.cf}</span>}
                           </div>
                         </div>
                       </div>
                     </div>
-                    <div style={{ display:"flex", gap:6, alignItems:"center" }}>
-                      {/* Badge fatturato */}
-                      {totaleCliente(c)>0 && <span style={{ fontSize:"0.68rem", padding:"3px 10px", background:"#e8f5e9", color:"#2e7d32", borderRadius:10 }}>€{totaleCliente(c).toFixed(0)} totale</span>}
-                      {arretratiCliente(c)>0 && <span style={{ fontSize:"0.68rem", padding:"3px 10px", background:"#ffebee", color:"#b8302a", borderRadius:10 }}>€{arretratiCliente(c).toFixed(0)} arretrati</span>}
-                      <button onClick={()=>setOrdineFor(c)} style={{ background:"#b8302a", color:"#fff", border:"none", borderRadius:2, padding:"5px 10px", cursor:"pointer", fontFamily:"monospace", fontSize:"0.62rem", textTransform:"uppercase" }}>+ Ordine</button>
-                      <button onClick={()=>setEditCl(c)} style={{ background:"#1565c0", color:"#fff", border:"none", borderRadius:2, padding:"5px 10px", cursor:"pointer", fontFamily:"monospace", fontSize:"0.62rem", textTransform:"uppercase" }}>✏️</button>
-                      <button onClick={()=>setDelClConf(c.id)} style={{ background:"#555", color:"#fff", border:"none", borderRadius:2, padding:"5px 10px", cursor:"pointer", fontFamily:"monospace", fontSize:"0.62rem", textTransform:"uppercase" }}>🗑</button>
+                    <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
+                      {totCl(c)>0&&<span style={{fontSize:"0.68rem",padding:"3px 10px",background:"#e8f5e9",color:"#2e7d32",borderRadius:10}}>€{totCl(c).toFixed(0)} totale</span>}
+                      {arrCl(c)>0&&<span style={{fontSize:"0.68rem",padding:"3px 10px",background:"#ffebee",color:"#b8302a",borderRadius:10}}>€{arrCl(c).toFixed(0)} arretrati</span>}
+                      <button onClick={()=>setOrdineFor(c)} style={{background:"#b8302a",color:"#fff",border:"none",borderRadius:2,padding:"5px 10px",cursor:"pointer",fontFamily:"monospace",fontSize:"0.62rem",textTransform:"uppercase"}}>+ Ordine</button>
+                      <button onClick={()=>setEditCl(c)} style={{background:"#1565c0",color:"#fff",border:"none",borderRadius:2,padding:"5px 10px",cursor:"pointer",fontFamily:"monospace",fontSize:"0.62rem",textTransform:"uppercase"}}>✏️</button>
+                      <button onClick={()=>setDelClConf(c.id)} style={{background:"#555",color:"#fff",border:"none",borderRadius:2,padding:"5px 10px",cursor:"pointer",fontFamily:"monospace",fontSize:"0.62rem",textTransform:"uppercase"}}>🗑</button>
                     </div>
                   </div>
                 </div>
-
-                {/* Espanso: ordini + listino */}
-                {expandCl===c.id && (
-                  <div style={{ padding:"0 18px 16px" }}>
-                    {/* Listino personalizzato */}
-                    <div style={{ marginTop:14, marginBottom:14 }}>
-                      <div style={{ fontSize:"0.6rem", textTransform:"uppercase", color:"#aaa", marginBottom:8 }}>Listino prezzi personale</div>
-                      <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))", gap:6 }}>
-                        {(c.listino||LISTINO_DEFAULT).map(v => (
-                          <div key={v.id} style={{ padding:"8px 12px", background:"#f5f2eb", borderRadius:3, border:"1px solid #e8e4dc" }}>
-                            <div style={{ fontSize:"0.72rem", color:"#1a1a1a" }}>{v.nome}</div>
-                            <div style={{ fontSize:"0.88rem", fontWeight:"bold", color:"#b8302a", marginTop:2 }}>€{v.prezzo}</div>
+                {expandCl===c.id&&(
+                  <div style={{padding:"0 18px 16px"}}>
+                    {/* Listino */}
+                    <div style={{marginTop:14,marginBottom:14}}>
+                      <div style={{fontSize:"0.6rem",textTransform:"uppercase",color:"#aaa",marginBottom:8}}>Listino prezzi personale</div>
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:6}}>
+                        {(c.listino||LISTINO_DEFAULT).map(v=>(
+                          <div key={v.id} style={{padding:"8px 12px",background:"#f5f2eb",borderRadius:3,border:"1px solid #e8e4dc"}}>
+                            <div style={{fontSize:"0.72rem",color:"#1a1a1a"}}>{v.nome}</div>
+                            <div style={{fontSize:"0.88rem",fontWeight:"bold",color:"#b8302a",marginTop:2}}>€{v.prezzo}</div>
                           </div>
                         ))}
                       </div>
                     </div>
-
                     {/* Ordini */}
-                    <div style={{ fontSize:"0.6rem", textTransform:"uppercase", color:"#aaa", marginBottom:8 }}>Storico ordini ({(c.ordini||[]).length})</div>
-                    {(c.ordini||[]).length===0 && <div style={{ fontSize:"0.75rem", color:"#ccc", padding:"12px 0" }}>Nessun ordine ancora</div>}
-                    {(c.ordini||[]).map(o => (
-                      <div key={o.id} style={{ border:"1px solid #e8e4dc", borderRadius:3, marginBottom:8, overflow:"hidden" }}>
-                        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", padding:"8px 14px", background:"#fafaf8", flexWrap:"wrap", gap:6 }}>
+                    <div style={{fontSize:"0.6rem",textTransform:"uppercase",color:"#aaa",marginBottom:8}}>Storico ordini ({(c.ordini||[]).length})</div>
+                    {(c.ordini||[]).length===0&&<div style={{fontSize:"0.75rem",color:"#ccc",padding:"12px 0"}}>Nessun ordine ancora</div>}
+                    {(c.ordini||[]).map(o=>(
+                      <div key={o.id} style={{border:"1px solid #e8e4dc",borderRadius:3,marginBottom:8,overflow:"hidden"}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 14px",background:"#fafaf8",flexWrap:"wrap",gap:6}}>
                           <div>
-                            <span style={{ fontSize:"0.75rem", color:"#1a1a1a" }}>Ordine #{o.id.toString().slice(-6)}</span>
-                            <span style={{ fontSize:"0.62rem", color:"#888", marginLeft:10 }}>{o.data}</span>
+                            <span style={{fontSize:"0.75rem",color:"#1a1a1a",fontWeight:"bold"}}>Ordine #{o.id.toString().slice(-6)}</span>
+                            <span style={{fontSize:"0.62rem",color:"#888",marginLeft:10}}>{o.data}</span>
+                            {o.sconto>0&&<span style={{fontSize:"0.62rem",color:"#2e7d32",marginLeft:10}}>Sconto: -€{o.sconto}</span>}
                           </div>
-                          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-                            <span style={{ fontSize:"0.82rem", fontWeight:"bold", color:"#1a1a1a" }}>€{(o.totale||0).toFixed(2)}</span>
-                            <select value={o.stato} onChange={e=>handleStatoPagamento(c.id,o.id,e.target.value)}
-                              style={{ border:"1px solid #ddd", borderRadius:3, padding:"3px 8px", fontFamily:"monospace", fontSize:"0.65rem", color:STATI_PAG_COLOR[o.stato], background:"#fff", outline:"none" }}>
-                              {STATI_PAGAMENTO.map(s=><option key={s} value={s}>{STATI_PAG_LABEL[s]}</option>)}
+                          <div style={{display:"flex",alignItems:"center",gap:8}}>
+                            <span style={{fontSize:"0.88rem",fontWeight:"bold",color:"#1a1a1a"}}>€{(o.totale||0).toFixed(2)}</span>
+                            <select value={o.stato} onChange={e=>handleStatoPag(c.id,o.id,e.target.value)}
+                              style={{border:"1px solid #ddd",borderRadius:3,padding:"3px 8px",fontFamily:"monospace",fontSize:"0.65rem",color:STATI_PAG_COLOR[o.stato],background:"#fff",outline:"none"}}>
+                              {STATI_PAG.map(s=><option key={s} value={s}>{STATI_PAG_LABEL[s]}</option>)}
                             </select>
-                            <button onClick={()=>exportPreventivoPDF(c,o)} style={{ background:"#2e2e2e", color:"#fff", border:"none", borderRadius:2, padding:"3px 8px", cursor:"pointer", fontFamily:"monospace", fontSize:"0.6rem" }}>PDF</button>
+                            <button onClick={()=>exportPreventivoPDF(c,o)} style={{background:"#2e2e2e",color:"#fff",border:"none",borderRadius:2,padding:"3px 8px",cursor:"pointer",fontFamily:"monospace",fontSize:"0.6rem"}}>PDF</button>
                           </div>
                         </div>
-                        <div style={{ padding:"8px 14px" }}>
-                          {(o.voci||[]).map((v,i) => (
-                            <div key={i} style={{ display:"flex", justifyContent:"space-between", fontSize:"0.72rem", color:"#555", padding:"2px 0", borderBottom:i<o.voci.length-1?"1px solid #f0ede6":"none" }}>
-                              <span>{v.servizio} {v.soggetto&&<span style={{ color:"#aaa" }}>— {v.soggetto}</span>}</span>
-                              <span style={{ color:"#1a1a1a" }}>€{v.prezzo}</span>
+                        {/* Dossier personalizzato incluso nell'ordine */}
+                        {o.dossierPersonalizzato&&(
+                          <div style={{padding:"6px 14px",background:"#f0f7ff",borderBottom:"1px solid #dce8f0"}}>
+                            <div style={{fontSize:"0.6rem",color:"#888",marginBottom:4,textTransform:"uppercase"}}>Contenuto dossier</div>
+                            <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
+                              {o.dossierPersonalizzato.map(item=>(
+                                <span key={item.id} style={{fontSize:"0.6rem",padding:"2px 7px",borderRadius:10,background:item.incluso?"#e3f2fd":"#f5f5f5",color:item.incluso?"#1565c0":"#aaa"}}>
+                                  {item.incluso?"✓":"✗"} {item.label}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        <div style={{padding:"8px 14px"}}>
+                          {(o.voci||[]).map((v,i)=>(
+                            <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:"0.72rem",color:"#555",padding:"2px 0",borderBottom:i<o.voci.length-1?"1px solid #f0ede6":"none"}}>
+                              <span>{v.servizio}{v.soggetto&&<span style={{color:"#aaa"}}> — {v.soggetto}</span>}{v.cfSoggetto&&<span style={{color:"#b8302a"}}> [{v.cfSoggetto}]</span>}</span>
+                              <span style={{color:"#1a1a1a"}}>€{v.prezzo}</span>
                             </div>
                           ))}
-                          {o.note&&<div style={{ fontSize:"0.65rem", color:"#aaa", marginTop:6 }}>Note: {o.note}</div>}
+                          {o.note&&<div style={{fontSize:"0.65rem",color:"#aaa",marginTop:6}}>Note: {o.note}</div>}
                         </div>
                       </div>
                     ))}
@@ -836,36 +890,36 @@ function App() {
           </div>
         )}
 
-        <div style={{ marginTop:20, fontSize:"0.62rem", color:"#aaa", lineHeight:1.7, borderTop:"1px solid #ddd", paddingTop:12 }}>
-          <strong style={{ color:"#888" }}>⚖ Uso professionale riservato.</strong> Solo fonti pubbliche lecite. GDPR (Reg. UE 2016/679), art. 6.
+        <div style={{marginTop:20,fontSize:"0.62rem",color:"#aaa",lineHeight:1.7,borderTop:"1px solid #ddd",paddingTop:12}}>
+          <strong style={{color:"#888"}}>⚖ Uso professionale riservato.</strong> Solo fonti pubbliche lecite. GDPR (Reg. UE 2016/679), art. 6.
         </div>
       </div>
 
-      {editRep    && <EditModal report={editRep} onSave={handleEditReport} onClose={()=>setEditRep(null)} />}
-      {(newCl||editCl) && <ClienteModal cliente={editCl||null} onSave={handleSaveCliente} onClose={()=>{setNewCl(false);setEditCl(null);}} />}
-      {ordineFor  && <OrdineModal cliente={ordineFor} onSave={handleSaveOrdine} onClose={()=>setOrdineFor(null)} />}
+      {editRep&&<EditReportModal report={editRep} onSave={handleEditReport} onClose={()=>setEditRep(null)} />}
+      {(newCl||editCl)&&<ClienteModal cliente={editCl||null} onSave={handleSaveCl} onClose={()=>{setNewCl(false);setEditCl(null);}} />}
+      {ordineFor&&<OrdineModal cliente={ordineFor} onSave={handleSaveOrdine} onClose={()=>setOrdineFor(null)} />}
 
-      {delConf && (
+      {delConf&&(
         <div className="overlay" onClick={()=>setDelConf(null)}>
-          <div className="modal" style={{ maxWidth:360 }} onClick={e=>e.stopPropagation()}>
-            <h3 style={{ fontFamily:"Georgia,serif", marginBottom:12 }}>Elimina report?</h3>
-            <p style={{ fontSize:"0.82rem", color:"#555", marginBottom:20 }}>Operazione non reversibile.</p>
-            <div style={{ display:"flex", gap:10 }}>
-              <button onClick={()=>handleDeleteReport(delConf)} style={{ flex:1, padding:12, background:"#c62828", color:"#fff", border:"none", borderRadius:3, cursor:"pointer", fontFamily:"monospace", fontSize:"0.75rem", textTransform:"uppercase" }}>🗑 Elimina</button>
-              <button onClick={()=>setDelConf(null)} style={{ flex:1, padding:12, background:"#e8e4dc", color:"#555", border:"none", borderRadius:3, cursor:"pointer", fontFamily:"monospace", fontSize:"0.75rem", textTransform:"uppercase" }}>Annulla</button>
+          <div className="modal" style={{maxWidth:360}} onClick={e=>e.stopPropagation()}>
+            <h3 style={{fontFamily:"Georgia,serif",marginBottom:12}}>Elimina report?</h3>
+            <p style={{fontSize:"0.82rem",color:"#555",marginBottom:20}}>Operazione non reversibile.</p>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>handleDelReport(delConf)} style={{flex:1,padding:12,background:"#c62828",color:"#fff",border:"none",borderRadius:3,cursor:"pointer",fontFamily:"monospace",fontSize:"0.75rem",textTransform:"uppercase"}}>🗑 Elimina</button>
+              <button onClick={()=>setDelConf(null)} style={{flex:1,padding:12,background:"#e8e4dc",color:"#555",border:"none",borderRadius:3,cursor:"pointer",fontFamily:"monospace",fontSize:"0.75rem",textTransform:"uppercase"}}>Annulla</button>
             </div>
           </div>
         </div>
       )}
 
-      {delClConf && (
+      {delClConf&&(
         <div className="overlay" onClick={()=>setDelClConf(null)}>
-          <div className="modal" style={{ maxWidth:360 }} onClick={e=>e.stopPropagation()}>
-            <h3 style={{ fontFamily:"Georgia,serif", marginBottom:12 }}>Elimina cliente?</h3>
-            <p style={{ fontSize:"0.82rem", color:"#555", marginBottom:20 }}>Verranno eliminati anche tutti gli ordini associati.</p>
-            <div style={{ display:"flex", gap:10 }}>
-              <button onClick={()=>handleDeleteCliente(delClConf)} style={{ flex:1, padding:12, background:"#c62828", color:"#fff", border:"none", borderRadius:3, cursor:"pointer", fontFamily:"monospace", fontSize:"0.75rem", textTransform:"uppercase" }}>🗑 Elimina</button>
-              <button onClick={()=>setDelClConf(null)} style={{ flex:1, padding:12, background:"#e8e4dc", color:"#555", border:"none", borderRadius:3, cursor:"pointer", fontFamily:"monospace", fontSize:"0.75rem", textTransform:"uppercase" }}>Annulla</button>
+          <div className="modal" style={{maxWidth:360}} onClick={e=>e.stopPropagation()}>
+            <h3 style={{fontFamily:"Georgia,serif",marginBottom:12}}>Elimina cliente?</h3>
+            <p style={{fontSize:"0.82rem",color:"#555",marginBottom:20}}>Verranno eliminati anche tutti gli ordini associati.</p>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={()=>handleDelCl(delClConf)} style={{flex:1,padding:12,background:"#c62828",color:"#fff",border:"none",borderRadius:3,cursor:"pointer",fontFamily:"monospace",fontSize:"0.75rem",textTransform:"uppercase"}}>🗑 Elimina</button>
+              <button onClick={()=>setDelClConf(null)} style={{flex:1,padding:12,background:"#e8e4dc",color:"#555",border:"none",borderRadius:3,cursor:"pointer",fontFamily:"monospace",fontSize:"0.75rem",textTransform:"uppercase"}}>Annulla</button>
             </div>
           </div>
         </div>
