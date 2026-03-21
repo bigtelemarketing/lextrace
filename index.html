@@ -307,25 +307,63 @@ function AdminUtenti({onClose}) {
   const [newRuolo,setNewRuolo]=useState("utente");
   const [saving,setSaving]=useState(false);
   const [msg,setMsg]=useState("");
+
   useEffect(()=>{ getAllUtenti().then(u=>{setUtenti(u);setLoading(false);}); },[]);
+
   const showMsg=m=>{setMsg(m);setTimeout(()=>setMsg(""),3000);};
+
+  // ─── FIX: usa signUp invece di admin.createUser ───────────────────────────
   const handleCreate=async()=>{
     if(!newEmail||!newPass||!newNome)return;
     setSaving(true);
-    const {data,error}=await sb.auth.admin.createUser({email:newEmail,password:newPass,email_confirm:true});
-    if(error){showMsg("❌ "+error.message);setSaving(false);return;}
-    await sb.from("profili").insert({id:data.user.id,email:newEmail,nome:newNome,ruolo:newRuolo});
-    setUtenti(prev=>[...prev,{id:data.user.id,email:newEmail,nome:newNome,ruolo:newRuolo}]);
+
+    // Salva la sessione admin corrente
+    const { data: { session: adminSession } } = await sb.auth.getSession();
+
+    // Crea nuovo utente con signUp
+    const { data, error } = await sb.auth.signUp({
+      email: newEmail,
+      password: newPass,
+    });
+
+    if(error){ showMsg("❌ "+error.message); setSaving(false); return; }
+
+    const userId = data.user?.id;
+    if(!userId){ showMsg("❌ Errore creazione utente"); setSaving(false); return; }
+
+    // Inserisce il profilo
+    const { error: profErr } = await sb.from("profili").insert({
+      id: userId,
+      email: newEmail,
+      nome: newNome,
+      ruolo: newRuolo
+    });
+
+    if(profErr){ showMsg("❌ Errore profilo: "+profErr.message); setSaving(false); return; }
+
+    // Ripristina la sessione admin (signUp potrebbe cambiarla)
+    if(adminSession) {
+      await sb.auth.setSession({
+        access_token: adminSession.access_token,
+        refresh_token: adminSession.refresh_token,
+      });
+    }
+
+    setUtenti(prev=>[...prev,{id:userId,email:newEmail,nome:newNome,ruolo:newRuolo}]);
     setShowNew(false);setNewEmail("");setNewPass("");setNewNome("");setNewRuolo("utente");
-    showMsg("✅ Utente creato!");setSaving(false);
+    showMsg("✅ Utente creato!");
+    setSaving(false);
   };
+
   const handleRuolo=async(id,ruolo)=>{
     await sb.from("profili").update({ruolo}).eq("id",id);
     setUtenti(prev=>prev.map(u=>u.id===id?{...u,ruolo}:u));
     showMsg("✅ Ruolo aggiornato");
   };
+
   const inp={width:"100%",padding:"8px 10px",border:"1px solid #ccc",borderRadius:3,fontFamily:"monospace",fontSize:"0.8rem",background:"#fafaf8",outline:"none"};
   const lbl={display:"block",fontSize:"0.6rem",textTransform:"uppercase",color:"#888",marginBottom:4};
+
   return(
     <div className="overlay" onClick={onClose}>
       <div className="modal" style={{maxWidth:700}} onClick={e=>e.stopPropagation()}>
@@ -373,9 +411,12 @@ function AdminUtenti({onClose}) {
               <div><label style={lbl}>Email *</label><input style={inp} type="email" value={newEmail} onChange={e=>setNewEmail(e.target.value)} placeholder="email@esempio.it"/></div>
               <div><label style={lbl}>Password *</label><input style={inp} type="password" value={newPass} onChange={e=>setNewPass(e.target.value)} placeholder="min 6 caratteri"/></div>
             </div>
+            <div style={{background:"#fff8e1",border:"1px solid #ffe082",borderRadius:3,padding:"8px 12px",marginBottom:12,fontSize:"0.7rem",color:"#7a5a00"}}>
+              ⚠ Dopo la creazione l'utente potrà accedere subito con email e password impostate.
+            </div>
             <div style={{display:"flex",gap:10}}>
               <button onClick={handleCreate} disabled={saving||!newEmail||!newPass||!newNome}
-                style={{flex:1,padding:11,background:(!newEmail||!newPass||!newNome)?"#ccc":"#2e7d32",color:"#fff",border:"none",borderRadius:3,cursor:"pointer",fontFamily:"monospace",fontSize:"0.75rem",textTransform:"uppercase"}}>
+                style={{flex:1,padding:11,background:(!newEmail||!newPass||!newNome||saving)?"#ccc":"#2e7d32",color:"#fff",border:"none",borderRadius:3,cursor:(!newEmail||!newPass||!newNome||saving)?"not-allowed":"pointer",fontFamily:"monospace",fontSize:"0.75rem",textTransform:"uppercase"}}>
                 {saving?"Creazione...":"💾 Crea utente"}
               </button>
               <button onClick={()=>setShowNew(false)} style={{flex:1,padding:11,background:"#e8e4dc",color:"#555",border:"none",borderRadius:3,cursor:"pointer",fontFamily:"monospace",fontSize:"0.75rem",textTransform:"uppercase"}}>Annulla</button>
@@ -626,10 +667,8 @@ function OrdineModal({cliente,onSave,onClose}) {
 }
 
 function App() {
-  // ─── authLoad=FALSE: parte subito sul login, nessun blocco ─────────────────
   const [user,      setUser]     = useState(null);
   const [profilo,   setProfilo]  = useState(null);
-  const [authLoad,  setAuthLoad] = useState(false);
   const [showAdmin, setShowAdmin]= useState(false);
   const [tab,       setTab]      = useState("persona");
   const [nome,      setNome]     = useState("");
@@ -663,14 +702,9 @@ function App() {
   const isAdmin = profilo?.ruolo === "admin";
 
   useEffect(()=>{
-    // Controlla sessione esistente in background senza bloccare
     sb.auth.getSession().then(({ data: { session } }) => {
-      if(session?.user){
-        setUser(session.user);
-        getProfilo(session.user.id).then(p=>setProfilo(p));
-      }
+      if(session?.user){ setUser(session.user); getProfilo(session.user.id).then(setProfilo); }
     });
-    // Ascolta cambiamenti auth
     const { data: { subscription } } = sb.auth.onAuthStateChange(async (event, session) => {
       const u = session?.user || null;
       setUser(u);
@@ -718,7 +752,6 @@ function App() {
   const totCl=c=>(c.ordini||[]).reduce((a,o)=>a+(o.totale||0),0);
   const arrCl=c=>(c.ordini||[]).filter(o=>o.stato==="arretrato").reduce((a,o)=>a+(o.totale||0),0);
 
-  // Mai bloccato — mostra login direttamente se non loggato
   if(!user) return <LoginPage onLogin={async(u)=>{setUser(u);const p=await getProfilo(u.id);setProfilo(p);}}/>;
 
   return(
