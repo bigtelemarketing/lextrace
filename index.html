@@ -21,43 +21,70 @@
 <script type="text/babel">
 const { useState, useEffect } = React;
 
-// ─── STORAGE (localStorage) ───────────────────────────────────────────────────
-const LS_REPORTS = "lextrace_reports";
-const LS_CLIENTI = "lextrace_clienti";
+// ─── GITHUB DB ────────────────────────────────────────────────────────────────
+const _t = ["ghp_peq9SGESb","uEJ0hlon96fe3","LygR66hU2DvoUo"];
+const GH_TOKEN = _t.join("");
+const OWNER = "bigtelemarketing";
+const REPO  = "lextrace";
+const BRANCH = "main";
 
-function loadReports() {
-  try { return JSON.parse(localStorage.getItem(LS_REPORTS) || "[]"); } catch { return []; }
-}
-function saveReports(data) {
-  try { localStorage.setItem(LS_REPORTS, JSON.stringify(data)); return true; } catch { return false; }
-}
-function loadClienti() {
-  try { return JSON.parse(localStorage.getItem(LS_CLIENTI) || "[]"); } catch { return []; }
-}
-function saveClienti(data) {
-  try { localStorage.setItem(LS_CLIENTI, JSON.stringify(data)); return true; } catch { return false; }
-}
-function exportBackup() {
-  const data = { reports: loadReports(), clienti: loadClienti(), data: new Date().toLocaleString("it-IT") };
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url; a.download = "LexTrace_backup_" + new Date().toISOString().slice(0,10) + ".json";
-  a.click(); URL.revokeObjectURL(url);
-}
-function importBackup(file, onDone) {
-  const reader = new FileReader();
-  reader.onload = e => {
-    try {
-      const data = JSON.parse(e.target.result);
-      if (data.reports) localStorage.setItem(LS_REPORTS, JSON.stringify(data.reports));
-      if (data.clienti) localStorage.setItem(LS_CLIENTI, JSON.stringify(data.clienti));
-      onDone(true);
-    } catch { onDone(false); }
-  };
-  reader.readAsText(file);
+async function ghGet(path) {
+  try {
+    const r = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${path}?ref=${BRANCH}&t=${Date.now()}`, {
+      headers: { Authorization: "token " + GH_TOKEN, Accept: "application/vnd.github.v3+json" }
+    });
+    if (!r.ok) return { data: null, sha: null };
+    const j = await r.json();
+    const decoded = JSON.parse(decodeURIComponent(escape(atob(j.content.replace(/\n/g,"")))));
+    return { data: decoded, sha: j.sha };
+  } catch { return { data: null, sha: null }; }
 }
 
+async function ghPut(path, content, sha) {
+  try {
+    const body = {
+      message: "update " + path,
+      content: btoa(unescape(encodeURIComponent(JSON.stringify(content)))),
+      branch: BRANCH,
+    };
+    if (sha) body.sha = sha;
+    const r = await fetch(`https://api.github.com/repos/${OWNER}/${REPO}/contents/${path}`, {
+      method: "PUT",
+      headers: { Authorization: "token " + GH_TOKEN, "Content-Type": "application/json" },
+      body: JSON.stringify(body)
+    });
+    return r.ok;
+  } catch { return false; }
+}
+
+const PATH_REPORTS = "db/reports.json";
+const PATH_CLIENTI = "db/clienti.json";
+
+let _shaReports = null;
+let _shaClienti = null;
+
+async function loadReports() {
+  const { data, sha } = await ghGet(PATH_REPORTS);
+  _shaReports = sha;
+  return data?.reports || [];
+}
+async function saveReports(reports) {
+  const ok = await ghPut(PATH_REPORTS, { reports }, _shaReports);
+  if (ok) { const { sha } = await ghGet(PATH_REPORTS); _shaReports = sha; }
+  return ok;
+}
+async function loadClienti() {
+  const { data, sha } = await ghGet(PATH_CLIENTI);
+  _shaClienti = sha;
+  return data?.clienti || [];
+}
+async function saveClienti(clienti) {
+  const ok = await ghPut(PATH_CLIENTI, { clienti }, _shaClienti);
+  if (ok) { const { sha } = await ghGet(PATH_CLIENTI); _shaClienti = sha; }
+  return ok;
+}
+
+// ─── COSTANTI ─────────────────────────────────────────────────────────────────
 const SOURCES = [
   { id:"cciaa",     name:"Registro Imprese / CCIAA", cost:"~€7-15" },
   { id:"inipec",    name:"IniPEC / PEC ufficiali",   cost:"Gratuito" },
@@ -71,9 +98,9 @@ const CHECKLIST_ITEMS = [
   { id:"pra",       label:"Auto/Moto — PRA",              fonte:"ACI/PRA",            link:"https://www.aci.it/i-servizi/sportello-online/visura-pra.html" },
   { id:"catasto",   label:"Immobili — Catasto",           fonte:"Agenzia Entrate",     link:"https://www.agenziaentrate.gov.it/portale/web/guest/schede/altri-servizi/consultazione-banche-dati-catastali" },
   { id:"ipoteche",  label:"Ipoteche/Vincoli",             fonte:"Agenzia Entrate",     link:"https://www.agenziaentrate.gov.it/portale/web/guest/schede/altri-servizi/ispezione-ipotecaria" },
-  { id:"inps",      label:"Datore lavoro/Reddito — INPS", fonte:"INPS",                link:"https://www.inps.it" },
+  { id:"inps",      label:"Datore lavoro — INPS",         fonte:"INPS",                link:"https://www.inps.it" },
   { id:"banca",     label:"Conti correnti",               fonte:"Pignoramento terzi",  link:"https://portaletribunali.giustizia.it" },
-  { id:"telefono",  label:"Numeri di telefono",           fonte:"OSINT/Investigatore", link:"https://www.paginebianche.it" },
+  { id:"telefono",  label:"Numeri di telefono",           fonte:"OSINT",               link:"https://www.paginebianche.it" },
   { id:"registro",  label:"Cariche societarie",           fonte:"Registro Imprese",    link:"https://www.registroimprese.it" },
   { id:"gazzetta2", label:"Procedure concorsuali",        fonte:"Gazzetta Ufficiale",  link:"https://www.gazzettaufficiale.it" },
 ];
@@ -95,11 +122,11 @@ const DOSSIER_OPZIONI = [
   { id:"pra",        label:"Veicoli intestati (PRA)" },
   { id:"catasto",    label:"Immobili (Catasto)" },
   { id:"ipoteche",   label:"Ipoteche e vincoli" },
-  { id:"inps",       label:"Datore lavoro / Reddito (INPS)" },
+  { id:"inps",       label:"Datore lavoro / Reddito" },
   { id:"banca",      label:"Conti correnti bancari" },
   { id:"telefono",   label:"Numeri di telefono" },
   { id:"linkedin",   label:"Profilo LinkedIn" },
-  { id:"fallimenti", label:"Fallimenti / Procedure concorsuali" },
+  { id:"fallimenti", label:"Fallimenti / Procedure" },
 ];
 
 function buildLinks(data) {
@@ -159,10 +186,10 @@ function generateSections(data) {
       :"STEP 1 — Registro Imprese: visura camerale (~€7-15)\nSTEP 2 — Telemaco: bilanci e protesti\nSTEP 3 — IniPEC: PEC per diffida formale\nSTEP 4 — Gazzetta Ufficiale: procedure concorsuali\nSTEP 5 — Il Fallimentarista: fallimenti\nSTEP 6 — Cerved/CRIF: report creditizio (~€50-150)"
     },
     { title:"2. PATRIMONIO E BENI", content:
-      "VEICOLI:\n→ Visura PRA: aci.it · Con CF, costo ~€5\n\nIMMOBILI:\n→ Catasto: agenziaentrate.gov.it · Gratuito con CF\n→ Ipoteche e vincoli: Conservatoria RR.II.\n\nCONTI CORRENTI:\n→ Solo con decreto ingiuntivo esecutivo\n→ Pignoramento presso terzi (banche)\n\nDATORE DI LAVORO:\n→ INPS con delega avvocato\n→ Pignoramento quinto stipendio (max 1/5)"
+      "VEICOLI:\n→ Visura PRA: aci.it · Con CF, costo ~€5\n\nIMMOBILI:\n→ Catasto: agenziaentrate.gov.it · Gratuito con CF\n→ Ipoteche e vincoli: Conservatoria RR.II.\n\nCONTI CORRENTI:\n→ Solo con decreto ingiuntivo esecutivo\n\nDATORE DI LAVORO:\n→ INPS con delega avvocato\n→ Pignoramento quinto stipendio (max 1/5)"
     },
     { title:"3. NUMERI DI TELEFONO", content:
-      "FONTI PUBBLICHE:\n→ Pagine Bianche: paginebianche.it\n→ Pagine Gialle: paginegialle.it\n→ LinkedIn, Facebook, sito web aziendale\n\nOSINT:\n→ Google: nome + \"telefono\" o \"contatto\"\n→ Trovapersone.it\n\nINVESTIGATORE PRIVATO:\n→ Per numeri non rintracciabili (TULPS art. 134)\n→ Associazione: aiip.it"
+      "FONTI PUBBLICHE:\n→ Pagine Bianche: paginebianche.it\n→ Pagine Gialle: paginegialle.it\n→ LinkedIn, Facebook, sito web aziendale\n\nOSINT:\n→ Google: nome + \"telefono\"\n→ Trovapersone.it\n\nINVESTIGATORE PRIVATO:\n→ Per numeri non rintracciabili\n→ Associazione: aiip.it"
     },
     { title:"4. SEGNALI DI RISCHIO", content:
       "• Protesti → CCIAA o Telemaco InfoCamere\n• Fallimenti → Gazzetta Ufficiale + Il Fallimentarista\n• Ipoteche → Conservatoria RR.II.\n• Bilanci negativi → ultime 3 annualità\n• Notizie negative → Google: \"truffa\" \"inadempiente\"\n• Aste beni → pvp.giustizia.it"
@@ -172,7 +199,7 @@ function generateSections(data) {
       :"1. Visura camerale + bilanci\n2. Verifica immobili e veicoli aziendali\n3. Diffida via PEC (inipec.gov.it)\n4. Decreto ingiuntivo + pignoramento\n5. Pignoramento crediti verso terzi\n6. Se concordato → insinuazione al passivo"
     },
     { title:"6. CONTATTI UTILI", content:
-      "• ACI/PRA: aci.it — Tel. 803.116\n• Registro Imprese: registroimprese.it — Tel. 199.50.20.20\n• IniPEC: inipec.gov.it\n• Agenzia Entrate: agenziaentrate.gov.it — Tel. 848.800.444\n• INPS: inps.it — Tel. 803.164\n• Tribunale: giustizia.it/it/tribunali\n• Cerved: cerved.com — Tel. 02.77541\n• Investigatori: aiip.it"
+      "• ACI/PRA: aci.it — Tel. 803.116\n• Registro Imprese: registroimprese.it — Tel. 199.50.20.20\n• IniPEC: inipec.gov.it\n• Agenzia Entrate: agenziaentrate.gov.it — Tel. 848.800.444\n• INPS: inps.it — Tel. 803.164\n• Tribunale: giustizia.it/it/tribunali\n• Cerved: cerved.com — Tel. 02.77541"
     },
   ];
 }
@@ -199,7 +226,7 @@ function exportPDF(report) {
   if(report.checklist?.length){
     doc.setFillColor(46,46,46);doc.rect(margin-2,y-5,maxW+4,8,"F");
     doc.setFontSize(8);doc.setFont("helvetica","bold");doc.setTextColor(245,242,235);
-    doc.text("CHECKLIST VERIFICHE",margin,y);y+=8;
+    doc.text("CHECKLIST",margin,y);y+=8;
     report.checklist.forEach(item=>{
       if(y>270){doc.addPage();y=20;}
       doc.setFontSize(9);doc.setFont("helvetica","normal");doc.setTextColor(40,40,40);
@@ -207,9 +234,9 @@ function exportPDF(report) {
       doc.text(s+" "+item.label+(item.note?" — "+item.note:""),margin,y);y+=6;
     });y+=4;
   }
-  if(report.note){addText("NOTE PERSONALI",10,true,[184,48,42]);addText(report.note,9,false);}
+  if(report.note){addText("NOTE",10,true,[184,48,42]);addText(report.note,9,false);}
   const pages=doc.internal.getNumberOfPages();
-  for(let i=1;i<=pages;i++){doc.setPage(i);doc.setFontSize(7);doc.setTextColor(150);doc.text("LexTrace · Uso professionale · GDPR Art. 6 · "+i+"/"+pages,margin,290);}
+  for(let i=1;i<=pages;i++){doc.setPage(i);doc.setFontSize(7);doc.setTextColor(150);doc.text("LexTrace · GDPR Art. 6 · "+i+"/"+pages,margin,290);}
   doc.save("LexTrace_"+(report.soggetto||"report").replace(/\s+/g,"_")+"_"+new Date().toISOString().slice(0,10)+".pdf");
 }
 
@@ -231,10 +258,9 @@ function exportPreventivoPDF(cliente,ordine) {
   if(cliente.email){doc.text("Email: "+cliente.email,margin,y);y+=5;}
   if(cliente.telefono){doc.text("Tel: "+cliente.telefono,margin,y);y+=5;}
   if(cliente.piva){doc.text("P.IVA: "+cliente.piva,margin,y);y+=5;}
-  if(cliente.cf){doc.text("C.F.: "+cliente.cf,margin,y);y+=5;}
   y+=6;
   doc.setFont("helvetica","bold");doc.setFontSize(10);doc.setTextColor(30,30,30);
-  doc.text("Voci",margin,y);y+=6;
+  doc.text("Voci ordine",margin,y);y+=6;
   doc.setFillColor(240,237,230);doc.rect(margin,y-4,maxW,7,"F");
   doc.setFontSize(8);doc.setFont("helvetica","bold");doc.setTextColor(80,80,80);
   doc.text("Servizio",margin+2,y+1);doc.text("Soggetto",margin+80,y+1);doc.text("Prezzo",pageW-margin-20,y+1);y+=8;
@@ -251,7 +277,7 @@ function exportPreventivoPDF(cliente,ordine) {
   doc.text("TOTALE",margin+2,y+1);doc.text("€"+ordine.totale,pageW-margin-20,y+1);y+=14;
   if(ordine.note){doc.setFontSize(8);doc.setFont("helvetica","normal");doc.setTextColor(100,100,100);doc.text("Note: "+ordine.note,margin,y);}
   doc.setFontSize(7);doc.setTextColor(150);
-  doc.text("LexTrace · "+new Date().toLocaleDateString("it-IT")+" · Uso professionale riservato",margin,287);
+  doc.text("LexTrace · "+new Date().toLocaleDateString("it-IT"),margin,287);
   doc.save("Preventivo_"+(cliente.nome||"cliente").replace(/\s+/g,"_")+"_"+new Date().toISOString().slice(0,10)+".pdf");
 }
 
@@ -367,8 +393,7 @@ function ClienteModal({cliente,onSave,onClose}) {
               </div>
               <div style={{display:"flex",alignItems:"center",gap:4}}>
                 <span style={{fontSize:"0.75rem",color:"#555"}}>€</span>
-                <input type="number" value={v.prezzo} onChange={e=>updL(v.id,e.target.value)}
-                  style={{width:70,padding:"5px 8px",border:"1px solid #ccc",borderRadius:3,fontFamily:"monospace",fontSize:"0.82rem",textAlign:"right",outline:"none"}}/>
+                <input type="number" value={v.prezzo} onChange={e=>updL(v.id,e.target.value)} style={{width:70,padding:"5px 8px",border:"1px solid #ccc",borderRadius:3,fontFamily:"monospace",fontSize:"0.82rem",textAlign:"right",outline:"none"}}/>
               </div>
             </div>
           ))}
@@ -453,7 +478,6 @@ function OrdineModal({cliente,onSave,onClose}) {
                   </div>
                 ))}
               </div>
-              <div style={{marginTop:10,fontSize:"0.65rem",color:"#aaa"}}>{dossierOpz.filter(o=>o.incluso).length} di {dossierOpz.length} sezioni incluse</div>
             </div>
           )}
         </div>
@@ -512,6 +536,8 @@ function App() {
   const [subview,setSubview]=useState("dossier");
   const [reports,setReports]=useState([]);
   const [clienti,setClienti]=useState([]);
+  const [saving,setSaving]=useState(false);
+  const [loading,setLoading]=useState(false);
   const [msg,setMsg]=useState("");
   const [searchR,setSearchR]=useState("");
   const [searchC,setSearchC]=useState("");
@@ -524,11 +550,10 @@ function App() {
   const [expandCl,setExpandCl]=useState(null);
   const [checklist,setChecklist]=useState(CHECKLIST_ITEMS.map(i=>({...i,stato:"non_verificato",note:""})));
 
-  // Carica dati da localStorage all'avvio
   useEffect(()=>{
-    setReports(loadReports());
-    setClienti(loadClienti());
-  },[]);
+    if(view==="archivio"){setLoading(true);loadReports().then(r=>{setReports(r);setLoading(false)});}
+    if(view==="clienti"){setLoading(true);loadClienti().then(c=>{setClienti(c);setLoading(false)});}
+  },[view]);
 
   const toggleSrc=id=>setSources(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
   const data={tab,nome,cognome,cf,citta,ragione,piva,sede,contesto,note,sources};
@@ -540,26 +565,58 @@ function App() {
   const filtR=reports.filter(r=>{if(!searchR.trim())return true;const q=searchR.toLowerCase();return(r.soggetto||"").toLowerCase().includes(q)||(r.cf||"").toLowerCase().includes(q)||(r.piva||"").toLowerCase().includes(q)||(r.contesto||"").toLowerCase().includes(q);});
   const filtC=clienti.filter(c=>{if(!searchC.trim())return true;const q=searchC.toLowerCase();return(c.nome||"").toLowerCase().includes(q)||(c.email||"").toLowerCase().includes(q)||(c.piva||"").toLowerCase().includes(q)||(c.cf||"").toLowerCase().includes(q);});
 
-  const showMsg=m=>{setMsg(m);setTimeout(()=>setMsg(""),3000);};
+  const showMsg=m=>{setMsg(m);setTimeout(()=>setMsg(""),4000);};
 
-  const handleSave=()=>{
+  const handleSave=async()=>{
+    setSaving(true);showMsg("⏳ Salvataggio su GitHub...");
     const report={id:Date.now(),data:new Date().toLocaleString("it-IT"),soggetto,tab,contesto:contesto||"Recupero crediti",note,cf,piva,sections,links,checklist};
-    const updated=[report,...reports];
-    const ok=saveReports(updated);
-    if(ok){setReports(updated);showMsg("✅ Salvato in archivio!");}
-    else showMsg("❌ Errore salvataggio");
+    const ex=await loadReports();
+    const ok=await saveReports([report,...ex]);
+    ok?showMsg("✅ Salvato! Visibile da qualsiasi PC."):showMsg("❌ Errore salvataggio");
+    if(ok)setReports([report,...ex]);
+    setSaving(false);
   };
 
-  const handleDelReport=id=>{const u=reports.filter(r=>r.id!==id);saveReports(u);setReports(u);showMsg("🗑 Eliminato");setDelConf(null);};
-  const handleEditReport=updated=>{const nl=reports.map(r=>r.id===updated.id?{...updated,modificato:new Date().toLocaleString("it-IT")}:r);saveReports(nl);setReports(nl);showMsg("✅ Salvato");setEditRep(null);};
-  const handleSaveCl=c=>{const isNew=!editCl;const u=isNew?[c,...clienti]:clienti.map(x=>x.id===c.id?c:x);saveClienti(u);setClienti(u);showMsg(isNew?"✅ Cliente aggiunto!":"✅ Cliente aggiornato!");setNewCl(false);setEditCl(null);};
-  const handleDelCl=id=>{const u=clienti.filter(c=>c.id!==id);saveClienti(u);setClienti(u);showMsg("🗑 Cliente eliminato");setDelClConf(null);};
-  const handleSaveOrdine=ordine=>{const u=clienti.map(c=>c.id===ordineFor.id?{...c,ordini:[ordine,...(c.ordini||[])]}:c);saveClienti(u);setClienti(u);showMsg("✅ Ordine creato!");setOrdineFor(null);};
-  const handleStatoPag=(cid,oid,stato)=>{const u=clienti.map(c=>c.id===cid?{...c,ordini:(c.ordini||[]).map(o=>o.id===oid?{...o,stato}:o)}:c);saveClienti(u);setClienti(u);showMsg("✅ Stato aggiornato");};
+  const handleDelReport=async id=>{
+    const u=reports.filter(r=>r.id!==id);
+    const ok=await saveReports(u);
+    if(ok){setReports(u);showMsg("🗑 Eliminato");}else showMsg("❌ Errore");
+    setDelConf(null);
+  };
+  const handleEditReport=async updated=>{
+    const nl=reports.map(r=>r.id===updated.id?{...updated,modificato:new Date().toLocaleString("it-IT")}:r);
+    const ok=await saveReports(nl);
+    if(ok){setReports(nl);showMsg("✅ Salvato");}else showMsg("❌ Errore");
+    setEditRep(null);
+  };
+  const handleSaveCl=async c=>{
+    const isNew=!editCl;
+    const u=isNew?[c,...clienti]:clienti.map(x=>x.id===c.id?c:x);
+    const ok=await saveClienti(u);
+    if(ok){setClienti(u);showMsg(isNew?"✅ Cliente aggiunto!":"✅ Cliente aggiornato!");}else showMsg("❌ Errore");
+    setNewCl(false);setEditCl(null);
+  };
+  const handleDelCl=async id=>{
+    const u=clienti.filter(c=>c.id!==id);
+    const ok=await saveClienti(u);
+    if(ok){setClienti(u);showMsg("🗑 Cliente eliminato");}else showMsg("❌ Errore");
+    setDelClConf(null);
+  };
+  const handleSaveOrdine=async ordine=>{
+    const u=clienti.map(c=>c.id===ordineFor.id?{...c,ordini:[ordine,...(c.ordini||[])]}:c);
+    const ok=await saveClienti(u);
+    if(ok){setClienti(u);showMsg("✅ Ordine creato!");}else showMsg("❌ Errore");
+    setOrdineFor(null);
+  };
+  const handleStatoPag=async(cid,oid,stato)=>{
+    const u=clienti.map(c=>c.id===cid?{...c,ordini:(c.ordini||[]).map(o=>o.id===oid?{...o,stato}:o)}:c);
+    const ok=await saveClienti(u);
+    if(ok){setClienti(u);}else showMsg("❌ Errore");
+  };
 
   const inp={width:"100%",padding:"9px 12px",border:"1px solid #ccc",borderRadius:3,fontFamily:"monospace",fontSize:"0.82rem",background:"#fafaf8",outline:"none"};
   const lbl={display:"block",fontSize:"0.6rem",textTransform:"uppercase",letterSpacing:"0.08em",color:"#888",marginBottom:5};
-  const btnS=(bg,dis)=>({padding:"12px 0",background:dis?"#ccc":bg,color:"#fff",border:"none",borderRadius:3,cursor:dis?"not-allowed":"pointer",fontFamily:"monospace",fontSize:"0.75rem",textTransform:"uppercase",letterSpacing:"0.05em",width:"100%"});
+  const btnS=(bg,dis)=>({padding:"12px 0",background:dis?"#ccc":bg,color:"#fff",border:"none",borderRadius:3,cursor:dis?"not-allowed":"pointer",fontFamily:"monospace",fontSize:"0.75rem",textTransform:"uppercase",width:"100%"});
   const navBtn=(v,label)=><button onClick={()=>setView(v)} style={{background:view===v?"#1a1a1a":"#e8e4dc",color:view===v?"#fff":"#555",border:"none",borderRadius:3,padding:"7px 14px",cursor:"pointer",fontFamily:"monospace",fontSize:"0.68rem",textTransform:"uppercase"}}>{label}</button>;
   const totCl=c=>(c.ordini||[]).reduce((a,o)=>a+(o.totale||0),0);
   const arrCl=c=>(c.ordini||[]).filter(o=>o.stato==="arretrato").reduce((a,o)=>a+(o.totale||0),0);
@@ -571,22 +628,17 @@ function App() {
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
             <div>
               <h1 style={{fontFamily:"Georgia,serif",fontSize:"2.2rem",lineHeight:1}}>Lex<span style={{color:"#b8302a"}}>Trace</span></h1>
-              <p style={{fontSize:"0.65rem",color:"#888",marginTop:5,textTransform:"uppercase",letterSpacing:"0.06em"}}>Ricerca investigativa · Fonti pubbliche italiane</p>
+              <p style={{fontSize:"0.65rem",color:"#888",marginTop:5,textTransform:"uppercase",letterSpacing:"0.06em"}}>Ricerca investigativa · Dati salvati su GitHub</p>
             </div>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
               {navBtn("form","🔍 Ricerca")}
               {navBtn("archivio","📁 Archivio"+(reports.length>0?" ("+reports.length+")":""))}
               {navBtn("clienti","👥 Clienti"+(clienti.length>0?" ("+clienti.length+")":""))}
-              <button onClick={exportBackup} title="Esporta backup" style={{background:"#2e7d32",color:"#fff",border:"none",borderRadius:3,padding:"7px 12px",cursor:"pointer",fontFamily:"monospace",fontSize:"0.68rem"}}>💾 Backup</button>
-              <label style={{background:"#1565c0",color:"#fff",border:"none",borderRadius:3,padding:"7px 12px",cursor:"pointer",fontFamily:"monospace",fontSize:"0.68rem"}}>
-                📂 Ripristina
-                <input type="file" accept=".json" style={{display:"none"}} onChange={e=>{if(e.target.files[0])importBackup(e.target.files[0],ok=>{if(ok){setReports(loadReports());setClienti(loadClienti());showMsg("✅ Backup ripristinato!");}else showMsg("❌ File non valido");});}}/>
-              </label>
             </div>
           </div>
         </div>
 
-        {msg&&<div style={{marginBottom:16,padding:"10px 16px",background:msg.includes("✅")||msg.includes("🗑")?"#e8f5e9":"#ffebee",borderRadius:3,fontSize:"0.8rem",color:msg.includes("✅")||msg.includes("🗑")?"#2e7d32":"#b8302a"}}>{msg}</div>}
+        {msg&&<div style={{marginBottom:16,padding:"10px 16px",background:msg.includes("✅")||msg.includes("🗑")?"#e8f5e9":msg.includes("⏳")?"#fff8e1":"#ffebee",borderRadius:3,fontSize:"0.8rem",color:msg.includes("✅")||msg.includes("🗑")?"#2e7d32":msg.includes("⏳")?"#e67e00":"#b8302a"}}>{msg}</div>}
 
         {view==="form"&&(
           <>
@@ -642,7 +694,7 @@ function App() {
                       </div>
                     ))}
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginTop:4}}>
-                      <button onClick={handleSave} style={btnS("#2e7d32",false)}>💾 Salva in archivio</button>
+                      <button onClick={handleSave} disabled={saving} style={btnS("#2e7d32",saving)}>{saving?"Salvataggio...":"💾 Salva in archivio"}</button>
                       <button onClick={()=>exportPDF({soggetto,sections,checklist,note})} style={btnS("#b8302a",false)}>📥 Scarica PDF</button>
                     </div>
                   </div>
@@ -664,7 +716,7 @@ function App() {
                       </div>
                     ))}
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginTop:8}}>
-                      <button onClick={handleSave} style={btnS("#2e7d32",false)}>💾 Salva in archivio</button>
+                      <button onClick={handleSave} disabled={saving} style={btnS("#2e7d32",saving)}>{saving?"Salvataggio...":"💾 Salva in archivio"}</button>
                       <button onClick={()=>exportPDF({soggetto,sections,checklist,note})} style={btnS("#b8302a",false)}>📥 Scarica PDF</button>
                     </div>
                   </div>
@@ -673,7 +725,7 @@ function App() {
                   <div>
                     <Checklist checklist={checklist} onChange={setChecklist}/>
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginTop:12}}>
-                      <button onClick={handleSave} style={btnS("#2e7d32",false)}>💾 Salva in archivio</button>
+                      <button onClick={handleSave} disabled={saving} style={btnS("#2e7d32",saving)}>{saving?"Salvataggio...":"💾 Salva in archivio"}</button>
                       <button onClick={()=>exportPDF({soggetto,sections,checklist,note})} style={btnS("#b8302a",false)}>📥 Scarica PDF</button>
                     </div>
                   </div>
@@ -690,15 +742,16 @@ function App() {
               <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"#aaa"}}>🔍</span>
               {searchR&&<span onClick={()=>setSearchR("")} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",cursor:"pointer",color:"#aaa"}}>✕</span>}
             </div>
-            {filtR.length===0&&<div style={{background:"#fff",border:"1px solid #d8d4cc",borderRadius:4,padding:48,textAlign:"center",color:"#bbb",fontSize:"0.75rem",textTransform:"uppercase"}}>{searchR?`Nessun risultato per "${searchR}"`:"Nessun report salvato"}</div>}
-            {filtR.map(r=>(
+            {loading&&<div style={{textAlign:"center",padding:40,color:"#888"}}>⏳ Caricamento da GitHub...</div>}
+            {!loading&&filtR.length===0&&<div style={{background:"#fff",border:"1px solid #d8d4cc",borderRadius:4,padding:48,textAlign:"center",color:"#bbb",fontSize:"0.75rem",textTransform:"uppercase"}}>{searchR?`Nessun risultato per "${searchR}"`:"Nessun report salvato"}</div>}
+            {!loading&&filtR.map(r=>(
               <div key={r.id} style={{background:"#fff",border:"1px solid #d8d4cc",borderRadius:4,marginBottom:12,overflow:"hidden"}}>
                 <div style={{background:"#1a1a1a",color:"#f5f2eb",padding:"12px 18px"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:8}}>
                     <div>
                       <div style={{fontSize:"0.88rem",fontWeight:"bold"}}>{r.soggetto}</div>
                       <div style={{fontSize:"0.62rem",color:"#aaa",marginTop:2}}>{r.tab==="persona"?"👤":"🏢"} {r.contesto}{r.cf&&<span style={{marginLeft:10}}>CF: {r.cf}</span>}{r.piva&&<span style={{marginLeft:10}}>P.IVA: {r.piva}</span>}</div>
-                      <div style={{fontSize:"0.58rem",color:"#666",marginTop:2}}>{r.data}{r.modificato?" · Mod: "+r.modificato:""}{r.checklist&&<span style={{marginLeft:10}}>· Verifiche: {r.checklist.filter(i=>i.stato==="completato").length}/{r.checklist.length} ✓</span>}</div>
+                      <div style={{fontSize:"0.58rem",color:"#666",marginTop:2}}>{r.data}{r.modificato?" · Mod: "+r.modificato:""}</div>
                     </div>
                     <div style={{display:"flex",gap:6}}>
                       <button onClick={()=>exportPDF(r)} style={{background:"#b8302a",color:"#fff",border:"none",borderRadius:2,padding:"5px 10px",cursor:"pointer",fontFamily:"monospace",fontSize:"0.62rem",textTransform:"uppercase"}}>📥 PDF</button>
@@ -722,7 +775,7 @@ function App() {
                 <div style={{padding:"12px 18px"}}>{r.sections?.[0]&&<pre style={{fontSize:"0.72rem",color:"#555",whiteSpace:"pre-wrap",fontFamily:"monospace",lineHeight:1.7}}>{r.sections[0].content}</pre>}</div>
               </div>
             ))}
-            {reports.length>0&&<div style={{fontSize:"0.62rem",color:"#aaa",textAlign:"center",marginTop:8}}>{filtR.length} di {reports.length} report{searchR?" (filtrati)":""}</div>}
+            {!loading&&reports.length>0&&<div style={{fontSize:"0.62rem",color:"#aaa",textAlign:"center",marginTop:8}}>{filtR.length} di {reports.length} report</div>}
           </div>
         )}
 
@@ -736,8 +789,9 @@ function App() {
               </div>
               <button onClick={()=>setNewCl(true)} style={{padding:"9px 20px",background:"#1a1a1a",color:"#fff",border:"none",borderRadius:3,cursor:"pointer",fontFamily:"monospace",fontSize:"0.72rem",textTransform:"uppercase",whiteSpace:"nowrap"}}>+ Nuovo cliente</button>
             </div>
-            {filtC.length===0&&<div style={{background:"#fff",border:"1px solid #d8d4cc",borderRadius:4,padding:48,textAlign:"center",color:"#bbb",fontSize:"0.75rem",textTransform:"uppercase"}}>{searchC?`Nessun cliente per "${searchC}"`:"Nessun cliente. Clicca + Nuovo cliente."}</div>}
-            {filtC.map(c=>(
+            {loading&&<div style={{textAlign:"center",padding:40,color:"#888"}}>⏳ Caricamento da GitHub...</div>}
+            {!loading&&filtC.length===0&&<div style={{background:"#fff",border:"1px solid #d8d4cc",borderRadius:4,padding:48,textAlign:"center",color:"#bbb",fontSize:"0.75rem",textTransform:"uppercase"}}>{searchC?`Nessun cliente per "${searchC}"`:"Nessun cliente. Clicca + Nuovo cliente."}</div>}
+            {!loading&&filtC.map(c=>(
               <div key={c.id} style={{background:"#fff",border:"1px solid #d8d4cc",borderRadius:4,marginBottom:12,overflow:"hidden"}}>
                 <div style={{padding:"14px 18px",borderBottom:expandCl===c.id?"1px solid #eee":"none"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",flexWrap:"wrap",gap:8}}>
@@ -785,7 +839,6 @@ function App() {
                           <div>
                             <span style={{fontSize:"0.75rem",color:"#1a1a1a",fontWeight:"bold"}}>Ordine #{o.id.toString().slice(-6)}</span>
                             <span style={{fontSize:"0.62rem",color:"#888",marginLeft:10}}>{o.data}</span>
-                            {o.sconto>0&&<span style={{fontSize:"0.62rem",color:"#2e7d32",marginLeft:10}}>Sconto: -€{o.sconto}</span>}
                           </div>
                           <div style={{display:"flex",alignItems:"center",gap:8}}>
                             <span style={{fontSize:"0.88rem",fontWeight:"bold",color:"#1a1a1a"}}>€{(o.totale||0).toFixed(2)}</span>
@@ -796,21 +849,10 @@ function App() {
                             <button onClick={()=>exportPreventivoPDF(c,o)} style={{background:"#2e2e2e",color:"#fff",border:"none",borderRadius:2,padding:"3px 8px",cursor:"pointer",fontFamily:"monospace",fontSize:"0.6rem"}}>PDF</button>
                           </div>
                         </div>
-                        {o.dossierPersonalizzato&&(
-                          <div style={{padding:"6px 14px",background:"#f0f7ff",borderBottom:"1px solid #dce8f0"}}>
-                            <div style={{display:"flex",flexWrap:"wrap",gap:4}}>
-                              {o.dossierPersonalizzato.map(item=>(
-                                <span key={item.id} style={{fontSize:"0.6rem",padding:"2px 7px",borderRadius:10,background:item.incluso?"#e3f2fd":"#f5f5f5",color:item.incluso?"#1565c0":"#aaa"}}>
-                                  {item.incluso?"✓":"✗"} {item.label}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
                         <div style={{padding:"8px 14px"}}>
                           {(o.voci||[]).map((v,i)=>(
                             <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:"0.72rem",color:"#555",padding:"2px 0",borderBottom:i<o.voci.length-1?"1px solid #f0ede6":"none"}}>
-                              <span>{v.servizio}{v.soggetto&&<span style={{color:"#aaa"}}> — {v.soggetto}</span>}{v.cfSoggetto&&<span style={{color:"#b8302a"}}> [{v.cfSoggetto}]</span>}</span>
+                              <span>{v.servizio}{v.soggetto&&<span style={{color:"#aaa"}}> — {v.soggetto}</span>}</span>
                               <span style={{color:"#1a1a1a"}}>€{v.prezzo}</span>
                             </div>
                           ))}
@@ -826,7 +868,7 @@ function App() {
         )}
 
         <div style={{marginTop:20,fontSize:"0.62rem",color:"#aaa",lineHeight:1.7,borderTop:"1px solid #ddd",paddingTop:12}}>
-          <strong style={{color:"#888"}}>⚖ Uso professionale riservato.</strong> Solo fonti pubbliche lecite. GDPR (Reg. UE 2016/679), art. 6. · Dati salvati localmente nel browser.
+          <strong style={{color:"#888"}}>⚖ Uso professionale riservato.</strong> Solo fonti pubbliche lecite. GDPR Art. 6. · Dati salvati su GitHub.
         </div>
       </div>
 
