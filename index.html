@@ -32,28 +32,14 @@ async function signIn(email, password) {
   return { user: data?.user || null, error: error?.message || null };
 }
 async function signOut() { await sb.auth.signOut(); }
-async function getUser() { const { data } = await sb.auth.getUser(); return data?.user || null; }
 
 async function getProfilo(userId) {
   const { data } = await sb.from("profili").select("*").eq("id", userId).single();
   return data;
 }
-
 async function getAllUtenti() {
   const { data } = await sb.from("profili").select("*").order("email");
   return data || [];
-}
-
-async function saveUtente(utente) {
-  const { error } = await sb.from("profili").upsert(utente);
-  return !error;
-}
-
-async function createUtente(email, password, nome, ruolo) {
-  const { data, error } = await sb.auth.admin.createUser({ email, password, email_confirm: true });
-  if (error) return { ok: false, error: error.message };
-  const { error: e2 } = await sb.from("profili").insert({ id: data.user.id, email, nome, ruolo });
-  return { ok: !e2, error: e2?.message };
 }
 
 // ─── DB ───────────────────────────────────────────────────────────────────────
@@ -93,7 +79,6 @@ const SOURCES = [
   { id:"tribunali", name:"Tribunali / Fallimenti",   cost:"Gratuito" },
   { id:"cerved",    name:"Cerved / CRIF",            cost:"€50-200" },
 ];
-
 const CHECKLIST_ITEMS = [
   { id:"pra",       label:"Auto/Moto — PRA",              fonte:"ACI/PRA",            link:"https://www.aci.it/i-servizi/sportello-online/visura-pra.html" },
   { id:"catasto",   label:"Immobili — Catasto",           fonte:"Agenzia Entrate",     link:"https://www.agenziaentrate.gov.it/portale/web/guest/schede/altri-servizi/consultazione-banche-dati-catastali" },
@@ -104,18 +89,15 @@ const CHECKLIST_ITEMS = [
   { id:"registro",  label:"Cariche societarie",           fonte:"Registro Imprese",    link:"https://www.registroimprese.it" },
   { id:"gazzetta2", label:"Procedure concorsuali",        fonte:"Gazzetta Ufficiale",  link:"https://www.gazzettaufficiale.it" },
 ];
-
 const LISTINO_DEFAULT = [
   { id:"base",     nome:"Dossier Base",     desc:"Ricerca web + Registro Imprese",        prezzo:49 },
   { id:"standard", nome:"Dossier Standard", desc:"Base + PRA + Catasto + IniPEC",          prezzo:99 },
   { id:"completo", nome:"Dossier Completo", desc:"Standard + INPS + Cerved + Telefono",    prezzo:199 },
   { id:"urgente",  nome:"Urgenza 24h",      desc:"Qualsiasi dossier con priorità massima", prezzo:80 },
 ];
-
 const STATI_PAG       = ["in_attesa","pagato","arretrato","annullato"];
 const STATI_PAG_LABEL = { in_attesa:"⏳ In attesa", pagato:"✅ Pagato", arretrato:"🔴 Arretrato", annullato:"✗ Annullato" };
 const STATI_PAG_COLOR = { in_attesa:"#e67e00", pagato:"#2e7d32", arretrato:"#b8302a", annullato:"#888" };
-
 const DOSSIER_OPZIONI = [
   { id:"web",        label:"Ricerca web e notizie" },
   { id:"registro",   label:"Registro Imprese / CCIAA" },
@@ -259,7 +241,7 @@ function exportPreventivoPDF(cliente,ordine) {
   if(cliente.telefono){doc.text("Tel: "+cliente.telefono,margin,y);y+=5;}
   y+=6;
   doc.setFont("helvetica","bold");doc.setFontSize(10);doc.setTextColor(30,30,30);
-  doc.text("Voci ordine",margin,y);y+=6;
+  doc.text("Voci",margin,y);y+=6;
   doc.setFillColor(240,237,230);doc.rect(margin,y-4,maxW,7,"F");
   doc.setFontSize(8);doc.setFont("helvetica","bold");doc.setTextColor(80,80,80);
   doc.text("Servizio",margin+2,y+1);doc.text("Soggetto",margin+80,y+1);doc.text("Prezzo",pageW-margin-20,y+1);y+=8;
@@ -321,7 +303,7 @@ function LoginPage({onLogin}) {
   );
 }
 
-// ─── PANNELLO ADMIN UTENTI ────────────────────────────────────────────────────
+// ─── ADMIN UTENTI ─────────────────────────────────────────────────────────────
 function AdminUtenti({onClose}) {
   const [utenti,setUtenti]=useState([]);
   const [loading,setLoading]=useState(true);
@@ -332,54 +314,36 @@ function AdminUtenti({onClose}) {
   const [newRuolo,setNewRuolo]=useState("utente");
   const [saving,setSaving]=useState(false);
   const [msg,setMsg]=useState("");
-
-  useEffect(()=>{
-    getAllUtenti().then(u=>{setUtenti(u);setLoading(false);});
-  },[]);
-
+  useEffect(()=>{ getAllUtenti().then(u=>{setUtenti(u);setLoading(false);}); },[]);
   const showMsg=m=>{setMsg(m);setTimeout(()=>setMsg(""),3000);};
-
   const handleCreate=async()=>{
     if(!newEmail||!newPass||!newNome)return;
     setSaving(true);
-    // Crea utente direttamente via Supabase Auth Admin
-    const {data,error}=await sb.auth.admin.createUser({
-      email:newEmail, password:newPass, email_confirm:true
-    });
+    const {data,error}=await sb.auth.admin.createUser({email:newEmail,password:newPass,email_confirm:true});
     if(error){showMsg("❌ "+error.message);setSaving(false);return;}
     await sb.from("profili").insert({id:data.user.id,email:newEmail,nome:newNome,ruolo:newRuolo});
     setUtenti(prev=>[...prev,{id:data.user.id,email:newEmail,nome:newNome,ruolo:newRuolo}]);
     setShowNew(false);setNewEmail("");setNewPass("");setNewNome("");setNewRuolo("utente");
-    showMsg("✅ Utente creato!");
-    setSaving(false);
+    showMsg("✅ Utente creato!");setSaving(false);
   };
-
   const handleRuolo=async(id,ruolo)=>{
     await sb.from("profili").update({ruolo}).eq("id",id);
     setUtenti(prev=>prev.map(u=>u.id===id?{...u,ruolo}:u));
     showMsg("✅ Ruolo aggiornato");
   };
-
   const inp={width:"100%",padding:"8px 10px",border:"1px solid #ccc",borderRadius:3,fontFamily:"monospace",fontSize:"0.8rem",background:"#fafaf8",outline:"none"};
   const lbl={display:"block",fontSize:"0.6rem",textTransform:"uppercase",color:"#888",marginBottom:4};
-
   return(
     <div className="overlay" onClick={onClose}>
       <div className="modal" style={{maxWidth:700}} onClick={e=>e.stopPropagation()}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,borderBottom:"2px solid #1a1a1a",paddingBottom:12}}>
-          <div>
-            <h2 style={{fontFamily:"Georgia,serif",fontSize:"1.3rem"}}>👑 Gestione Utenti</h2>
-            <p style={{fontSize:"0.65rem",color:"#888",marginTop:4}}>Pannello amministratore</p>
-          </div>
+          <h2 style={{fontFamily:"Georgia,serif",fontSize:"1.3rem"}}>👑 Gestione Utenti</h2>
           <button onClick={onClose} style={{background:"none",border:"none",fontSize:"1.2rem",cursor:"pointer"}}>✕</button>
         </div>
-
         {msg&&<div style={{marginBottom:14,padding:"8px 12px",background:msg.includes("✅")?"#e8f5e9":"#ffebee",borderRadius:3,fontSize:"0.78rem",color:msg.includes("✅")?"#2e7d32":"#b8302a"}}>{msg}</div>}
-
-        {/* Lista utenti */}
         {loading?<div style={{textAlign:"center",padding:20,color:"#888"}}>Caricamento...</div>:(
           <div style={{marginBottom:20}}>
-            <div style={{fontSize:"0.6rem",textTransform:"uppercase",color:"#aaa",marginBottom:10,letterSpacing:"0.08em"}}>Utenti registrati ({utenti.length})</div>
+            <div style={{fontSize:"0.6rem",textTransform:"uppercase",color:"#aaa",marginBottom:10}}>Utenti ({utenti.length})</div>
             {utenti.map(u=>(
               <div key={u.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:"#fafaf8",border:"1px solid #e8e4dc",borderRadius:4,marginBottom:8,flexWrap:"wrap",gap:8}}>
                 <div>
@@ -400,19 +364,15 @@ function AdminUtenti({onClose}) {
             ))}
           </div>
         )}
-
-        {/* Nuovo utente */}
         {!showNew?(
-          <button onClick={()=>setShowNew(true)} style={{width:"100%",padding:11,background:"#1a1a1a",color:"#fff",border:"none",borderRadius:3,cursor:"pointer",fontFamily:"monospace",fontSize:"0.75rem",textTransform:"uppercase"}}>
-            + Crea nuovo utente
-          </button>
+          <button onClick={()=>setShowNew(true)} style={{width:"100%",padding:11,background:"#1a1a1a",color:"#fff",border:"none",borderRadius:3,cursor:"pointer",fontFamily:"monospace",fontSize:"0.75rem",textTransform:"uppercase"}}>+ Crea nuovo utente</button>
         ):(
           <div style={{background:"#f5f2eb",border:"1px solid #d8d4cc",borderRadius:4,padding:20}}>
-            <div style={{fontSize:"0.6rem",textTransform:"uppercase",color:"#aaa",marginBottom:14,letterSpacing:"0.08em"}}>Nuovo utente</div>
+            <div style={{fontSize:"0.6rem",textTransform:"uppercase",color:"#aaa",marginBottom:14}}>Nuovo utente</div>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
               <div><label style={lbl}>Nome *</label><input style={inp} value={newNome} onChange={e=>setNewNome(e.target.value)} placeholder="Mario Rossi"/></div>
               <div><label style={lbl}>Ruolo</label>
-                <select value={newRuolo} onChange={e=>setNewRuolo(e.target.value)} style={{...inp}}>
+                <select value={newRuolo} onChange={e=>setNewRuolo(e.target.value)} style={inp}>
                   <option value="utente">Utente</option>
                   <option value="admin">Admin</option>
                 </select>
@@ -425,9 +385,7 @@ function AdminUtenti({onClose}) {
                 style={{flex:1,padding:11,background:(!newEmail||!newPass||!newNome)?"#ccc":"#2e7d32",color:"#fff",border:"none",borderRadius:3,cursor:"pointer",fontFamily:"monospace",fontSize:"0.75rem",textTransform:"uppercase"}}>
                 {saving?"Creazione...":"💾 Crea utente"}
               </button>
-              <button onClick={()=>setShowNew(false)} style={{flex:1,padding:11,background:"#e8e4dc",color:"#555",border:"none",borderRadius:3,cursor:"pointer",fontFamily:"monospace",fontSize:"0.75rem",textTransform:"uppercase"}}>
-                Annulla
-              </button>
+              <button onClick={()=>setShowNew(false)} style={{flex:1,padding:11,background:"#e8e4dc",color:"#555",border:"none",borderRadius:3,cursor:"pointer",fontFamily:"monospace",fontSize:"0.75rem",textTransform:"uppercase"}}>Annulla</button>
             </div>
           </div>
         )}
@@ -681,7 +639,6 @@ function App() {
   const [profilo,   setProfilo]  = useState(null);
   const [authLoad,  setAuthLoad] = useState(true);
   const [showAdmin, setShowAdmin]= useState(false);
-
   const [tab,       setTab]      = useState("persona");
   const [nome,      setNome]     = useState("");
   const [cognome,   setCognome]  = useState("");
@@ -713,17 +670,25 @@ function App() {
 
   const isAdmin = profilo?.ruolo === "admin";
 
+  // ─── FIX: usa onAuthStateChange con timeout fallback ───────────────────────
   useEffect(()=>{
-    getUser().then(async u=>{
+    // Timeout di sicurezza: se dopo 5 secondi non arriva risposta, mostra login
+    const timeout = setTimeout(()=>{ setAuthLoad(false); }, 5000);
+
+    const { data: { subscription } } = sb.auth.onAuthStateChange(async (event, session) => {
+      clearTimeout(timeout);
+      const u = session?.user || null;
       setUser(u);
-      if(u){ const p=await getProfilo(u.id); setProfilo(p); }
+      if(u) {
+        const p = await getProfilo(u.id);
+        setProfilo(p);
+      } else {
+        setProfilo(null);
+      }
       setAuthLoad(false);
     });
-    sb.auth.onAuthStateChange(async(_,session)=>{
-      setUser(session?.user||null);
-      if(session?.user){ const p=await getProfilo(session.user.id); setProfilo(p); }
-      else setProfilo(null);
-    });
+
+    return () => { clearTimeout(timeout); subscription.unsubscribe(); };
   },[]);
 
   useEffect(()=>{
@@ -776,13 +741,11 @@ function App() {
     </div>
   );
 
-  if(!user) return <LoginPage onLogin={setUser}/>;
+  if(!user) return <LoginPage onLogin={async(u)=>{ setUser(u); const p=await getProfilo(u.id); setProfilo(p); }}/>;
 
   return(
     <div style={{background:"#f5f2eb",minHeight:"100vh",padding:"28px 20px"}}>
       <div style={{maxWidth:860,margin:"0 auto"}}>
-
-        {/* Header */}
         <div style={{borderBottom:"2px solid #1a1a1a",paddingBottom:16,marginBottom:24}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
             <div>
@@ -792,7 +755,6 @@ function App() {
               </h1>
               <p style={{fontSize:"0.65rem",color:"#888",marginTop:5,textTransform:"uppercase",letterSpacing:"0.06em"}}>
                 {profilo?.nome||user.email}
-                {isAdmin&&<span style={{marginLeft:8,color:"#aaa"}}>· Accesso completo a tutti i dossier</span>}
               </p>
             </div>
             <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
@@ -904,7 +866,7 @@ function App() {
 
         {view==="archivio"&&(
           <div>
-            {isAdmin&&<div style={{background:"#fff3e0",border:"1px solid #ffe0b2",borderRadius:4,padding:"10px 16px",marginBottom:16,fontSize:"0.75rem",color:"#e67e00"}}>👑 Modalità Admin — stai visualizzando i dossier di tutti gli utenti</div>}
+            {isAdmin&&<div style={{background:"#fff3e0",border:"1px solid #ffe0b2",borderRadius:4,padding:"10px 16px",marginBottom:16,fontSize:"0.75rem",color:"#e67e00"}}>👑 Modalità Admin — tutti i dossier</div>}
             <div style={{position:"relative",marginBottom:20}}>
               <input style={{...inp,paddingLeft:36}} value={searchR} onChange={e=>setSearchR(e.target.value)} placeholder="Cerca per nome, CF, P.IVA, contesto..."/>
               <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"#aaa"}}>🔍</span>
@@ -921,7 +883,7 @@ function App() {
                       <div style={{fontSize:"0.62rem",color:"#aaa",marginTop:2}}>{r.tab==="persona"?"👤":"🏢"} {r.contesto}{r.cf&&<span style={{marginLeft:10}}>CF: {r.cf}</span>}{r.piva&&<span style={{marginLeft:10}}>P.IVA: {r.piva}</span>}</div>
                       <div style={{fontSize:"0.58rem",color:"#666",marginTop:2}}>{r.data}{r.modificato?" · Mod: "+r.modificato:""}</div>
                     </div>
-                    <div style={{display:"flex",gap:6,alignItems:"center"}}>
+                    <div style={{display:"flex",gap:6}}>
                       <button onClick={()=>exportPDF(r)} style={{background:"#b8302a",color:"#fff",border:"none",borderRadius:2,padding:"5px 10px",cursor:"pointer",fontFamily:"monospace",fontSize:"0.62rem",textTransform:"uppercase"}}>📥 PDF</button>
                       <button onClick={()=>setEditRep(r)} style={{background:"#1565c0",color:"#fff",border:"none",borderRadius:2,padding:"5px 10px",cursor:"pointer",fontFamily:"monospace",fontSize:"0.62rem",textTransform:"uppercase"}}>✏️</button>
                       <button onClick={()=>setDelConf(r.id)} style={{background:"#555",color:"#fff",border:"none",borderRadius:2,padding:"5px 10px",cursor:"pointer",fontFamily:"monospace",fontSize:"0.62rem",textTransform:"uppercase"}}>🗑</button>
@@ -949,7 +911,7 @@ function App() {
 
         {view==="clienti"&&(
           <div>
-            {isAdmin&&<div style={{background:"#fff3e0",border:"1px solid #ffe0b2",borderRadius:4,padding:"10px 16px",marginBottom:16,fontSize:"0.75rem",color:"#e67e00"}}>👑 Modalità Admin — stai visualizzando i clienti di tutti gli utenti</div>}
+            {isAdmin&&<div style={{background:"#fff3e0",border:"1px solid #ffe0b2",borderRadius:4,padding:"10px 16px",marginBottom:16,fontSize:"0.75rem",color:"#e67e00"}}>👑 Modalità Admin — tutti i clienti</div>}
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,gap:12,flexWrap:"wrap"}}>
               <div style={{position:"relative",flex:1,minWidth:200}}>
                 <input style={{...inp,paddingLeft:36}} value={searchC} onChange={e=>setSearchC(e.target.value)} placeholder="Cerca per nome, email, CF, P.IVA..."/>
