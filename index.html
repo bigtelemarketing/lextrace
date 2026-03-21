@@ -31,22 +31,39 @@ async function signIn(email, password) {
   const { data, error } = await sb.auth.signInWithPassword({ email, password });
   return { user: data?.user || null, error: error?.message || null };
 }
-async function signOut() {
-  await sb.auth.signOut();
+async function signOut() { await sb.auth.signOut(); }
+async function getUser() { const { data } = await sb.auth.getUser(); return data?.user || null; }
+
+async function getProfilo(userId) {
+  const { data } = await sb.from("profili").select("*").eq("id", userId).single();
+  return data;
 }
-async function getUser() {
-  const { data } = await sb.auth.getUser();
-  return data?.user || null;
+
+async function getAllUtenti() {
+  const { data } = await sb.from("profili").select("*").order("email");
+  return data || [];
+}
+
+async function saveUtente(utente) {
+  const { error } = await sb.from("profili").upsert(utente);
+  return !error;
+}
+
+async function createUtente(email, password, nome, ruolo) {
+  const { data, error } = await sb.auth.admin.createUser({ email, password, email_confirm: true });
+  if (error) return { ok: false, error: error.message };
+  const { error: e2 } = await sb.from("profili").insert({ id: data.user.id, email, nome, ruolo });
+  return { ok: !e2, error: e2?.message };
 }
 
 // ─── DB ───────────────────────────────────────────────────────────────────────
 async function loadReports() {
-  const { data, error } = await sb.from("reports").select("*").order("id", { ascending: false });
-  if (error) { console.error(error); return []; }
+  const { data } = await sb.from("reports").select("*").order("id", { ascending: false });
   return data || [];
 }
 async function saveReport(report) {
-  const { error } = await sb.from("reports").upsert(report);
+  const { data: { user } } = await sb.auth.getUser();
+  const { error } = await sb.from("reports").upsert({ ...report, user_id: user.id });
   return !error;
 }
 async function deleteReport(id) {
@@ -54,12 +71,12 @@ async function deleteReport(id) {
   return !error;
 }
 async function loadClienti() {
-  const { data, error } = await sb.from("clienti").select("*").order("id", { ascending: false });
-  if (error) { console.error(error); return []; }
+  const { data } = await sb.from("clienti").select("*").order("id", { ascending: false });
   return data || [];
 }
 async function saveCliente(cliente) {
-  const { error } = await sb.from("clienti").upsert(cliente);
+  const { data: { user } } = await sb.auth.getUser();
+  const { error } = await sb.from("clienti").upsert({ ...cliente, user_id: user.id });
   return !error;
 }
 async function deleteCliente(id) {
@@ -240,7 +257,6 @@ function exportPreventivoPDF(cliente,ordine) {
   doc.text(cliente.nome,margin,y);y+=5;
   if(cliente.email){doc.text("Email: "+cliente.email,margin,y);y+=5;}
   if(cliente.telefono){doc.text("Tel: "+cliente.telefono,margin,y);y+=5;}
-  if(cliente.piva){doc.text("P.IVA: "+cliente.piva,margin,y);y+=5;}
   y+=6;
   doc.setFont("helvetica","bold");doc.setFontSize(10);doc.setTextColor(30,30,30);
   doc.text("Voci ordine",margin,y);y+=6;
@@ -254,89 +270,167 @@ function exportPreventivoPDF(cliente,ordine) {
     doc.text(v.servizio||"-",margin+2,y);doc.text(v.soggetto||"-",margin+80,y);doc.text("€"+v.prezzo,pageW-margin-20,y);y+=7;
   });
   y+=4;
-  if(ordine.sconto>0){doc.setFontSize(9);doc.setFont("helvetica","normal");doc.setTextColor(46,125,50);doc.text("Sconto: -€"+ordine.sconto,margin,y);y+=6;}
   doc.setFillColor(184,48,42);doc.rect(margin,y-4,maxW,9,"F");
   doc.setFontSize(10);doc.setFont("helvetica","bold");doc.setTextColor(255,255,255);
-  doc.text("TOTALE",margin+2,y+1);doc.text("€"+ordine.totale,pageW-margin-20,y+1);y+=14;
+  doc.text("TOTALE",margin+2,y+1);doc.text("€"+ordine.totale,pageW-margin-20,y+1);
   doc.setFontSize(7);doc.setTextColor(150);
   doc.text("LexTrace · "+new Date().toLocaleDateString("it-IT"),margin,287);
   doc.save("Preventivo_"+(cliente.nome||"cliente").replace(/\s+/g,"_")+"_"+new Date().toISOString().slice(0,10)+".pdf");
 }
 
-// ─── LOGIN PAGE ───────────────────────────────────────────────────────────────
-function LoginPage({ onLogin }) {
-  const [email,    setEmail]    = useState("");
-  const [password, setPassword] = useState("");
-  const [loading,  setLoading]  = useState(false);
-  const [error,    setError]    = useState("");
-
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError("");
-    const { user, error } = await signIn(email, password);
-    if (user) { onLogin(user); }
-    else { setError(error || "Credenziali non valide"); }
+// ─── LOGIN ────────────────────────────────────────────────────────────────────
+function LoginPage({onLogin}) {
+  const [email,setEmail]=useState("");
+  const [password,setPassword]=useState("");
+  const [loading,setLoading]=useState(false);
+  const [error,setError]=useState("");
+  const handle=async(e)=>{
+    e.preventDefault();setLoading(true);setError("");
+    const {user,error}=await signIn(email,password);
+    if(user){onLogin(user);}else{setError(error||"Credenziali non valide");}
     setLoading(false);
   };
-
-  return (
-    <div style={{ minHeight:"100vh", background:"#1a1a1a", display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
-      <div style={{ width:"100%", maxWidth:400 }}>
-        <div style={{ textAlign:"center", marginBottom:40 }}>
-          <h1 style={{ fontFamily:"Georgia,serif", fontSize:"3rem", color:"#f5f2eb", lineHeight:1 }}>
-            Lex<span style={{ color:"#b8302a" }}>Trace</span>
-          </h1>
-          <p style={{ fontSize:"0.7rem", color:"#666", marginTop:10, textTransform:"uppercase", letterSpacing:"0.1em" }}>
-            Ricerca investigativa digitale
-          </p>
+  return(
+    <div style={{minHeight:"100vh",background:"#1a1a1a",display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+      <div style={{width:"100%",maxWidth:400}}>
+        <div style={{textAlign:"center",marginBottom:40}}>
+          <h1 style={{fontFamily:"Georgia,serif",fontSize:"3rem",color:"#f5f2eb",lineHeight:1}}>Lex<span style={{color:"#b8302a"}}>Trace</span></h1>
+          <p style={{fontSize:"0.7rem",color:"#666",marginTop:10,textTransform:"uppercase",letterSpacing:"0.1em"}}>Ricerca investigativa digitale</p>
         </div>
-
-        <form onSubmit={handleLogin}>
-          <div style={{ background:"#222", border:"1px solid #333", borderRadius:6, padding:32 }}>
-            <div style={{ marginBottom:20 }}>
-              <label style={{ display:"block", fontSize:"0.62rem", textTransform:"uppercase", letterSpacing:"0.1em", color:"#666", marginBottom:8 }}>Email</label>
-              <input
-                type="email"
-                value={email}
-                onChange={e=>setEmail(e.target.value)}
-                required
-                placeholder="email@esempio.it"
-                style={{ width:"100%", padding:"11px 14px", background:"#2a2a2a", border:"1px solid #444", borderRadius:4, color:"#f5f2eb", fontFamily:"monospace", fontSize:"0.85rem", outline:"none" }}
-                onFocus={e=>e.target.style.borderColor="#b8302a"}
-                onBlur={e=>e.target.style.borderColor="#444"}
-              />
+        <form onSubmit={handle}>
+          <div style={{background:"#222",border:"1px solid #333",borderRadius:6,padding:32}}>
+            <div style={{marginBottom:20}}>
+              <label style={{display:"block",fontSize:"0.62rem",textTransform:"uppercase",letterSpacing:"0.1em",color:"#666",marginBottom:8}}>Email</label>
+              <input type="email" value={email} onChange={e=>setEmail(e.target.value)} required placeholder="email@esempio.it"
+                style={{width:"100%",padding:"11px 14px",background:"#2a2a2a",border:"1px solid #444",borderRadius:4,color:"#f5f2eb",fontFamily:"monospace",fontSize:"0.85rem",outline:"none"}}/>
             </div>
-            <div style={{ marginBottom:24 }}>
-              <label style={{ display:"block", fontSize:"0.62rem", textTransform:"uppercase", letterSpacing:"0.1em", color:"#666", marginBottom:8 }}>Password</label>
-              <input
-                type="password"
-                value={password}
-                onChange={e=>setPassword(e.target.value)}
-                required
-                placeholder="••••••••"
-                style={{ width:"100%", padding:"11px 14px", background:"#2a2a2a", border:"1px solid #444", borderRadius:4, color:"#f5f2eb", fontFamily:"monospace", fontSize:"0.85rem", outline:"none" }}
-                onFocus={e=>e.target.style.borderColor="#b8302a"}
-                onBlur={e=>e.target.style.borderColor="#444"}
-              />
+            <div style={{marginBottom:24}}>
+              <label style={{display:"block",fontSize:"0.62rem",textTransform:"uppercase",letterSpacing:"0.1em",color:"#666",marginBottom:8}}>Password</label>
+              <input type="password" value={password} onChange={e=>setPassword(e.target.value)} required placeholder="••••••••"
+                style={{width:"100%",padding:"11px 14px",background:"#2a2a2a",border:"1px solid #444",borderRadius:4,color:"#f5f2eb",fontFamily:"monospace",fontSize:"0.85rem",outline:"none"}}/>
             </div>
-            {error && (
-              <div style={{ background:"#3a1a1a", border:"1px solid #b8302a", borderRadius:4, padding:"10px 14px", marginBottom:16, fontSize:"0.78rem", color:"#ff6b6b" }}>
-                ⚠ {error}
-              </div>
-            )}
-            <button
-              type="submit"
-              disabled={loading}
-              style={{ width:"100%", padding:13, background: loading?"#555":"#b8302a", color:"#fff", border:"none", borderRadius:4, cursor: loading?"not-allowed":"pointer", fontFamily:"monospace", fontSize:"0.82rem", textTransform:"uppercase", letterSpacing:"0.06em" }}>
-              {loading ? "Accesso in corso..." : "Accedi →"}
+            {error&&<div style={{background:"#3a1a1a",border:"1px solid #b8302a",borderRadius:4,padding:"10px 14px",marginBottom:16,fontSize:"0.78rem",color:"#ff6b6b"}}>⚠ {error}</div>}
+            <button type="submit" disabled={loading} style={{width:"100%",padding:13,background:loading?"#555":"#b8302a",color:"#fff",border:"none",borderRadius:4,cursor:loading?"not-allowed":"pointer",fontFamily:"monospace",fontSize:"0.82rem",textTransform:"uppercase",letterSpacing:"0.06em"}}>
+              {loading?"Accesso in corso...":"Accedi →"}
             </button>
           </div>
         </form>
+        <p style={{textAlign:"center",fontSize:"0.62rem",color:"#444",marginTop:24,letterSpacing:"0.06em"}}>LEXTRACE · USO PROFESSIONALE RISERVATO · GDPR ART. 6</p>
+      </div>
+    </div>
+  );
+}
 
-        <p style={{ textAlign:"center", fontSize:"0.62rem", color:"#444", marginTop:24, letterSpacing:"0.06em" }}>
-          LEXTRACE · USO PROFESSIONALE RISERVATO · GDPR ART. 6
-        </p>
+// ─── PANNELLO ADMIN UTENTI ────────────────────────────────────────────────────
+function AdminUtenti({onClose}) {
+  const [utenti,setUtenti]=useState([]);
+  const [loading,setLoading]=useState(true);
+  const [showNew,setShowNew]=useState(false);
+  const [newEmail,setNewEmail]=useState("");
+  const [newPass,setNewPass]=useState("");
+  const [newNome,setNewNome]=useState("");
+  const [newRuolo,setNewRuolo]=useState("utente");
+  const [saving,setSaving]=useState(false);
+  const [msg,setMsg]=useState("");
+
+  useEffect(()=>{
+    getAllUtenti().then(u=>{setUtenti(u);setLoading(false);});
+  },[]);
+
+  const showMsg=m=>{setMsg(m);setTimeout(()=>setMsg(""),3000);};
+
+  const handleCreate=async()=>{
+    if(!newEmail||!newPass||!newNome)return;
+    setSaving(true);
+    // Crea utente direttamente via Supabase Auth Admin
+    const {data,error}=await sb.auth.admin.createUser({
+      email:newEmail, password:newPass, email_confirm:true
+    });
+    if(error){showMsg("❌ "+error.message);setSaving(false);return;}
+    await sb.from("profili").insert({id:data.user.id,email:newEmail,nome:newNome,ruolo:newRuolo});
+    setUtenti(prev=>[...prev,{id:data.user.id,email:newEmail,nome:newNome,ruolo:newRuolo}]);
+    setShowNew(false);setNewEmail("");setNewPass("");setNewNome("");setNewRuolo("utente");
+    showMsg("✅ Utente creato!");
+    setSaving(false);
+  };
+
+  const handleRuolo=async(id,ruolo)=>{
+    await sb.from("profili").update({ruolo}).eq("id",id);
+    setUtenti(prev=>prev.map(u=>u.id===id?{...u,ruolo}:u));
+    showMsg("✅ Ruolo aggiornato");
+  };
+
+  const inp={width:"100%",padding:"8px 10px",border:"1px solid #ccc",borderRadius:3,fontFamily:"monospace",fontSize:"0.8rem",background:"#fafaf8",outline:"none"};
+  const lbl={display:"block",fontSize:"0.6rem",textTransform:"uppercase",color:"#888",marginBottom:4};
+
+  return(
+    <div className="overlay" onClick={onClose}>
+      <div className="modal" style={{maxWidth:700}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,borderBottom:"2px solid #1a1a1a",paddingBottom:12}}>
+          <div>
+            <h2 style={{fontFamily:"Georgia,serif",fontSize:"1.3rem"}}>👑 Gestione Utenti</h2>
+            <p style={{fontSize:"0.65rem",color:"#888",marginTop:4}}>Pannello amministratore</p>
+          </div>
+          <button onClick={onClose} style={{background:"none",border:"none",fontSize:"1.2rem",cursor:"pointer"}}>✕</button>
+        </div>
+
+        {msg&&<div style={{marginBottom:14,padding:"8px 12px",background:msg.includes("✅")?"#e8f5e9":"#ffebee",borderRadius:3,fontSize:"0.78rem",color:msg.includes("✅")?"#2e7d32":"#b8302a"}}>{msg}</div>}
+
+        {/* Lista utenti */}
+        {loading?<div style={{textAlign:"center",padding:20,color:"#888"}}>Caricamento...</div>:(
+          <div style={{marginBottom:20}}>
+            <div style={{fontSize:"0.6rem",textTransform:"uppercase",color:"#aaa",marginBottom:10,letterSpacing:"0.08em"}}>Utenti registrati ({utenti.length})</div>
+            {utenti.map(u=>(
+              <div key={u.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:"#fafaf8",border:"1px solid #e8e4dc",borderRadius:4,marginBottom:8,flexWrap:"wrap",gap:8}}>
+                <div>
+                  <div style={{fontSize:"0.82rem",fontWeight:"bold",color:"#1a1a1a"}}>{u.nome||"—"}</div>
+                  <div style={{fontSize:"0.65rem",color:"#888",marginTop:2}}>{u.email}</div>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:"0.65rem",padding:"3px 10px",borderRadius:10,background:u.ruolo==="admin"?"#fff3e0":"#e8f5e9",color:u.ruolo==="admin"?"#e67e00":"#2e7d32"}}>
+                    {u.ruolo==="admin"?"👑 Admin":"👤 Utente"}
+                  </span>
+                  <select value={u.ruolo} onChange={e=>handleRuolo(u.id,e.target.value)}
+                    style={{border:"1px solid #ddd",borderRadius:3,padding:"4px 8px",fontFamily:"monospace",fontSize:"0.68rem",background:"#fff",outline:"none",cursor:"pointer"}}>
+                    <option value="utente">Utente</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Nuovo utente */}
+        {!showNew?(
+          <button onClick={()=>setShowNew(true)} style={{width:"100%",padding:11,background:"#1a1a1a",color:"#fff",border:"none",borderRadius:3,cursor:"pointer",fontFamily:"monospace",fontSize:"0.75rem",textTransform:"uppercase"}}>
+            + Crea nuovo utente
+          </button>
+        ):(
+          <div style={{background:"#f5f2eb",border:"1px solid #d8d4cc",borderRadius:4,padding:20}}>
+            <div style={{fontSize:"0.6rem",textTransform:"uppercase",color:"#aaa",marginBottom:14,letterSpacing:"0.08em"}}>Nuovo utente</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+              <div><label style={lbl}>Nome *</label><input style={inp} value={newNome} onChange={e=>setNewNome(e.target.value)} placeholder="Mario Rossi"/></div>
+              <div><label style={lbl}>Ruolo</label>
+                <select value={newRuolo} onChange={e=>setNewRuolo(e.target.value)} style={{...inp}}>
+                  <option value="utente">Utente</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div><label style={lbl}>Email *</label><input style={inp} type="email" value={newEmail} onChange={e=>setNewEmail(e.target.value)} placeholder="email@esempio.it"/></div>
+              <div><label style={lbl}>Password *</label><input style={inp} type="password" value={newPass} onChange={e=>setNewPass(e.target.value)} placeholder="min 6 caratteri"/></div>
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={handleCreate} disabled={saving||!newEmail||!newPass||!newNome}
+                style={{flex:1,padding:11,background:(!newEmail||!newPass||!newNome)?"#ccc":"#2e7d32",color:"#fff",border:"none",borderRadius:3,cursor:"pointer",fontFamily:"monospace",fontSize:"0.75rem",textTransform:"uppercase"}}>
+                {saving?"Creazione...":"💾 Crea utente"}
+              </button>
+              <button onClick={()=>setShowNew(false)} style={{flex:1,padding:11,background:"#e8e4dc",color:"#555",border:"none",borderRadius:3,cursor:"pointer",fontFamily:"monospace",fontSize:"0.75rem",textTransform:"uppercase"}}>
+                Annulla
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -510,7 +604,6 @@ function OrdineModal({cliente,onSave,onClose}) {
           </div>
         </div>
         <div style={{marginBottom:14}}>
-          <div style={{fontSize:"0.6rem",textTransform:"uppercase",color:"#aaa",marginBottom:8}}>Voci ordine</div>
           {voci.map((v)=>(
             <div key={v.id} style={{background:"#fafaf8",border:"1px solid #e8e4dc",borderRadius:4,padding:"10px 12px",marginBottom:8}}>
               <div style={{display:"grid",gridTemplateColumns:"2fr 2fr 1fr auto",gap:6,marginBottom:6}}>
@@ -582,10 +675,12 @@ function OrdineModal({cliente,onSave,onClose}) {
   );
 }
 
-// ─── APP PRINCIPALE ───────────────────────────────────────────────────────────
+// ─── APP ──────────────────────────────────────────────────────────────────────
 function App() {
   const [user,      setUser]     = useState(null);
+  const [profilo,   setProfilo]  = useState(null);
   const [authLoad,  setAuthLoad] = useState(true);
+  const [showAdmin, setShowAdmin]= useState(false);
 
   const [tab,       setTab]      = useState("persona");
   const [nome,      setNome]     = useState("");
@@ -616,17 +711,26 @@ function App() {
   const [expandCl,  setExpandCl] = useState(null);
   const [checklist, setChecklist]= useState(CHECKLIST_ITEMS.map(i=>({...i,stato:"non_verificato",note:""})));
 
-  // Controlla sessione all'avvio
+  const isAdmin = profilo?.ruolo === "admin";
+
   useEffect(()=>{
-    getUser().then(u=>{ setUser(u); setAuthLoad(false); });
-    sb.auth.onAuthStateChange((_event, session)=>{ setUser(session?.user||null); });
+    getUser().then(async u=>{
+      setUser(u);
+      if(u){ const p=await getProfilo(u.id); setProfilo(p); }
+      setAuthLoad(false);
+    });
+    sb.auth.onAuthStateChange(async(_,session)=>{
+      setUser(session?.user||null);
+      if(session?.user){ const p=await getProfilo(session.user.id); setProfilo(p); }
+      else setProfilo(null);
+    });
   },[]);
 
   useEffect(()=>{
-    if(!user) return;
+    if(!user)return;
     if(view==="archivio"){setLoading(true);loadReports().then(r=>{setReports(r);setLoading(false)});}
     if(view==="clienti"){setLoading(true);loadClienti().then(c=>{setClienti(c);setLoading(false)});}
-  },[view, user]);
+  },[view,user]);
 
   const toggleSrc=id=>setSources(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
   const data={tab,nome,cognome,cf,citta,ragione,piva,sede,contesto,note,sources};
@@ -663,7 +767,6 @@ function App() {
   const totCl=c=>(c.ordini||[]).reduce((a,o)=>a+(o.totale||0),0);
   const arrCl=c=>(c.ordini||[]).filter(o=>o.stato==="arretrato").reduce((a,o)=>a+(o.totale||0),0);
 
-  // Loading iniziale autenticazione
   if(authLoad) return(
     <div style={{minHeight:"100vh",background:"#1a1a1a",display:"flex",alignItems:"center",justifyContent:"center"}}>
       <div style={{textAlign:"center"}}>
@@ -673,26 +776,31 @@ function App() {
     </div>
   );
 
-  // Pagina login
   if(!user) return <LoginPage onLogin={setUser}/>;
 
-  // App principale
   return(
     <div style={{background:"#f5f2eb",minHeight:"100vh",padding:"28px 20px"}}>
       <div style={{maxWidth:860,margin:"0 auto"}}>
+
+        {/* Header */}
         <div style={{borderBottom:"2px solid #1a1a1a",paddingBottom:16,marginBottom:24}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
             <div>
-              <h1 style={{fontFamily:"Georgia,serif",fontSize:"2.2rem",lineHeight:1}}>Lex<span style={{color:"#b8302a"}}>Trace</span></h1>
-              <p style={{fontSize:"0.65rem",color:"#888",marginTop:5,textTransform:"uppercase",letterSpacing:"0.06em"}}>Ricerca investigativa · {user.email}</p>
+              <h1 style={{fontFamily:"Georgia,serif",fontSize:"2.2rem",lineHeight:1}}>
+                Lex<span style={{color:"#b8302a"}}>Trace</span>
+                {isAdmin&&<span style={{fontSize:"0.7rem",background:"#e67e00",color:"#fff",padding:"2px 8px",borderRadius:10,marginLeft:10,verticalAlign:"middle"}}>👑 Admin</span>}
+              </h1>
+              <p style={{fontSize:"0.65rem",color:"#888",marginTop:5,textTransform:"uppercase",letterSpacing:"0.06em"}}>
+                {profilo?.nome||user.email}
+                {isAdmin&&<span style={{marginLeft:8,color:"#aaa"}}>· Accesso completo a tutti i dossier</span>}
+              </p>
             </div>
             <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
               {navBtn("form","🔍 Ricerca")}
               {navBtn("archivio","📁 Archivio"+(reports.length>0?" ("+reports.length+")":""))}
               {navBtn("clienti","👥 Clienti"+(clienti.length>0?" ("+clienti.length+")":""))}
-              <button onClick={async()=>{await signOut();setUser(null);}} style={{background:"#555",color:"#fff",border:"none",borderRadius:3,padding:"7px 14px",cursor:"pointer",fontFamily:"monospace",fontSize:"0.68rem",textTransform:"uppercase"}}>
-                Esci
-              </button>
+              {isAdmin&&<button onClick={()=>setShowAdmin(true)} style={{background:"#e67e00",color:"#fff",border:"none",borderRadius:3,padding:"7px 14px",cursor:"pointer",fontFamily:"monospace",fontSize:"0.68rem",textTransform:"uppercase"}}>👑 Utenti</button>}
+              <button onClick={async()=>{await signOut();setUser(null);setProfilo(null);}} style={{background:"#555",color:"#fff",border:"none",borderRadius:3,padding:"7px 14px",cursor:"pointer",fontFamily:"monospace",fontSize:"0.68rem",textTransform:"uppercase"}}>Esci</button>
             </div>
           </div>
         </div>
@@ -796,6 +904,7 @@ function App() {
 
         {view==="archivio"&&(
           <div>
+            {isAdmin&&<div style={{background:"#fff3e0",border:"1px solid #ffe0b2",borderRadius:4,padding:"10px 16px",marginBottom:16,fontSize:"0.75rem",color:"#e67e00"}}>👑 Modalità Admin — stai visualizzando i dossier di tutti gli utenti</div>}
             <div style={{position:"relative",marginBottom:20}}>
               <input style={{...inp,paddingLeft:36}} value={searchR} onChange={e=>setSearchR(e.target.value)} placeholder="Cerca per nome, CF, P.IVA, contesto..."/>
               <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"#aaa"}}>🔍</span>
@@ -812,7 +921,7 @@ function App() {
                       <div style={{fontSize:"0.62rem",color:"#aaa",marginTop:2}}>{r.tab==="persona"?"👤":"🏢"} {r.contesto}{r.cf&&<span style={{marginLeft:10}}>CF: {r.cf}</span>}{r.piva&&<span style={{marginLeft:10}}>P.IVA: {r.piva}</span>}</div>
                       <div style={{fontSize:"0.58rem",color:"#666",marginTop:2}}>{r.data}{r.modificato?" · Mod: "+r.modificato:""}</div>
                     </div>
-                    <div style={{display:"flex",gap:6}}>
+                    <div style={{display:"flex",gap:6,alignItems:"center"}}>
                       <button onClick={()=>exportPDF(r)} style={{background:"#b8302a",color:"#fff",border:"none",borderRadius:2,padding:"5px 10px",cursor:"pointer",fontFamily:"monospace",fontSize:"0.62rem",textTransform:"uppercase"}}>📥 PDF</button>
                       <button onClick={()=>setEditRep(r)} style={{background:"#1565c0",color:"#fff",border:"none",borderRadius:2,padding:"5px 10px",cursor:"pointer",fontFamily:"monospace",fontSize:"0.62rem",textTransform:"uppercase"}}>✏️</button>
                       <button onClick={()=>setDelConf(r.id)} style={{background:"#555",color:"#fff",border:"none",borderRadius:2,padding:"5px 10px",cursor:"pointer",fontFamily:"monospace",fontSize:"0.62rem",textTransform:"uppercase"}}>🗑</button>
@@ -840,6 +949,7 @@ function App() {
 
         {view==="clienti"&&(
           <div>
+            {isAdmin&&<div style={{background:"#fff3e0",border:"1px solid #ffe0b2",borderRadius:4,padding:"10px 16px",marginBottom:16,fontSize:"0.75rem",color:"#e67e00"}}>👑 Modalità Admin — stai visualizzando i clienti di tutti gli utenti</div>}
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,gap:12,flexWrap:"wrap"}}>
               <div style={{position:"relative",flex:1,minWidth:200}}>
                 <input style={{...inp,paddingLeft:36}} value={searchC} onChange={e=>setSearchC(e.target.value)} placeholder="Cerca per nome, email, CF, P.IVA..."/>
@@ -931,6 +1041,7 @@ function App() {
         </div>
       </div>
 
+      {showAdmin&&<AdminUtenti onClose={()=>setShowAdmin(false)}/>}
       {editRep&&<EditReportModal report={editRep} onSave={handleEditReport} onClose={()=>setEditRep(null)}/>}
       {(newCl||editCl)&&<ClienteModal cliente={editCl||null} onSave={handleSaveCl} onClose={()=>{setNewCl(false);setEditCl(null);}}/>}
       {ordineFor&&<OrdineModal cliente={ordineFor} onSave={handleSaveOrdine} onClose={()=>setOrdineFor(null)}/>}
