@@ -26,23 +26,21 @@ const SB_URL = "https://fpvvtagszklzamwtpbjt.supabase.co";
 const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZwdnZ0YWdzemtsemFtd3RwYmp0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxMDQzODEsImV4cCI6MjA4OTY4MDM4MX0.cfddzqRfpQ2QMoJlXNvm28ntjadoWxrInq5bIX_nYbI";
 const sb = supabase.createClient(SB_URL, SB_KEY);
 
-// ─── AUTH ─────────────────────────────────────────────────────────────────────
 async function signIn(email, password) {
   const { data, error } = await sb.auth.signInWithPassword({ email, password });
   return { user: data?.user || null, error: error?.message || null };
 }
 async function signOut() { await sb.auth.signOut(); }
-
 async function getProfilo(userId) {
-  const { data } = await sb.from("profili").select("*").eq("id", userId).single();
-  return data;
+  try {
+    const { data } = await sb.from("profili").select("*").eq("id", userId).single();
+    return data;
+  } catch { return null; }
 }
 async function getAllUtenti() {
   const { data } = await sb.from("profili").select("*").order("email");
   return data || [];
 }
-
-// ─── DB ───────────────────────────────────────────────────────────────────────
 async function loadReports() {
   const { data } = await sb.from("reports").select("*").order("id", { ascending: false });
   return data || [];
@@ -70,7 +68,6 @@ async function deleteCliente(id) {
   return !error;
 }
 
-// ─── COSTANTI ─────────────────────────────────────────────────────────────────
 const SOURCES = [
   { id:"cciaa",     name:"Registro Imprese / CCIAA", cost:"~€7-15" },
   { id:"inipec",    name:"IniPEC / PEC ufficiali",   cost:"Gratuito" },
@@ -144,7 +141,7 @@ function buildLinks(data) {
       { name:"Aste giudiziarie",          url:`https://pvp.giustizia.it/pvp/it/list_aste.wp` },
     ]},
     { label:"🚗 Veicoli e Patrimonio", links:[
-      { name:"ACI PRA — Visura veicoli",  url:`https://www.aci.it/i-servizi/sportello-online/visura-pra.html` },
+      { name:"ACI PRA",                   url:`https://www.aci.it/i-servizi/sportello-online/visura-pra.html` },
       { name:"Agenzia Entrate — catasto", url:`https://www.agenziaentrate.gov.it/portale/web/guest/schede/altri-servizi/consultazione-banche-dati-catastali` },
       { name:"Agenzia Entrate — ipoteche",url:`https://www.agenziaentrate.gov.it/portale/web/guest/schede/altri-servizi/ispezione-ipotecaria` },
     ]},
@@ -168,20 +165,20 @@ function generateSections(data) {
       :"STEP 1 — Registro Imprese: visura camerale (~€7-15)\nSTEP 2 — Telemaco: bilanci e protesti\nSTEP 3 — IniPEC: PEC per diffida formale\nSTEP 4 — Gazzetta Ufficiale: procedure concorsuali\nSTEP 5 — Il Fallimentarista: fallimenti\nSTEP 6 — Cerved/CRIF: report creditizio (~€50-150)"
     },
     { title:"2. PATRIMONIO E BENI", content:
-      "VEICOLI:\n→ Visura PRA: aci.it · Con CF, costo ~€5\n\nIMMOBILI:\n→ Catasto: agenziaentrate.gov.it · Gratuito con CF\n→ Ipoteche e vincoli: Conservatoria RR.II.\n\nCONTI CORRENTI:\n→ Solo con decreto ingiuntivo esecutivo\n\nDATORE DI LAVORO:\n→ INPS con delega avvocato\n→ Pignoramento quinto stipendio (max 1/5)"
+      "VEICOLI:\n→ Visura PRA: aci.it · Con CF, costo ~€5\n\nIMMOBILI:\n→ Catasto: agenziaentrate.gov.it · Gratuito con CF\n→ Ipoteche e vincoli: Conservatoria RR.II.\n\nCONTI CORRENTI:\n→ Solo con decreto ingiuntivo esecutivo\n\nDATORE DI LAVORO:\n→ INPS con delega avvocato"
     },
     { title:"3. NUMERI DI TELEFONO", content:
-      "FONTI PUBBLICHE:\n→ Pagine Bianche: paginebianche.it\n→ Pagine Gialle: paginegialle.it\n→ LinkedIn, Facebook, sito web aziendale\n\nOSINT:\n→ Google: nome + \"telefono\"\n→ Trovapersone.it\n\nINVESTIGATORE PRIVATO:\n→ Per numeri non rintracciabili\n→ Associazione: aiip.it"
+      "FONTI PUBBLICHE:\n→ Pagine Bianche: paginebianche.it\n→ Pagine Gialle: paginegialle.it\n\nOSINT:\n→ Google: nome + \"telefono\"\n→ Trovapersone.it\n\nINVESTIGATORE PRIVATO:\n→ Per numeri non rintracciabili\n→ Associazione: aiip.it"
     },
     { title:"4. SEGNALI DI RISCHIO", content:
       "• Protesti → CCIAA o Telemaco InfoCamere\n• Fallimenti → Gazzetta Ufficiale + Il Fallimentarista\n• Ipoteche → Conservatoria RR.II.\n• Bilanci negativi → ultime 3 annualità\n• Notizie negative → Google: \"truffa\" \"inadempiente\"\n• Aste beni → pvp.giustizia.it"
     },
     { title:"5. ITER RECUPERO CREDITI", content:isP
-      ?"1. Verifica veicoli: PRA con CF\n2. Verifica immobili: catasto + ipoteche\n3. Diffida via PEC certificata\n4. Se insoluto → decreto ingiuntivo\n5. Pignoramento c/c bancario\n6. Pignoramento quinto stipendio\n7. Pignoramento immobiliare se necessario"
-      :"1. Visura camerale + bilanci\n2. Verifica immobili e veicoli aziendali\n3. Diffida via PEC (inipec.gov.it)\n4. Decreto ingiuntivo + pignoramento\n5. Pignoramento crediti verso terzi\n6. Se concordato → insinuazione al passivo"
+      ?"1. Verifica veicoli: PRA con CF\n2. Verifica immobili: catasto + ipoteche\n3. Diffida via PEC certificata\n4. Se insoluto → decreto ingiuntivo\n5. Pignoramento c/c bancario\n6. Pignoramento quinto stipendio"
+      :"1. Visura camerale + bilanci\n2. Verifica immobili e veicoli aziendali\n3. Diffida via PEC (inipec.gov.it)\n4. Decreto ingiuntivo + pignoramento\n5. Pignoramento crediti verso terzi"
     },
     { title:"6. CONTATTI UTILI", content:
-      "• ACI/PRA: aci.it — Tel. 803.116\n• Registro Imprese: registroimprese.it — Tel. 199.50.20.20\n• IniPEC: inipec.gov.it\n• Agenzia Entrate: agenziaentrate.gov.it — Tel. 848.800.444\n• INPS: inps.it — Tel. 803.164\n• Tribunale: giustizia.it/it/tribunali\n• Cerved: cerved.com — Tel. 02.77541"
+      "• ACI/PRA: aci.it — Tel. 803.116\n• Registro Imprese: registroimprese.it\n• IniPEC: inipec.gov.it\n• Agenzia Entrate: agenziaentrate.gov.it\n• INPS: inps.it — Tel. 803.164\n• Cerved: cerved.com — Tel. 02.77541"
     },
   ];
 }
@@ -260,7 +257,6 @@ function exportPreventivoPDF(cliente,ordine) {
   doc.save("Preventivo_"+(cliente.nome||"cliente").replace(/\s+/g,"_")+"_"+new Date().toISOString().slice(0,10)+".pdf");
 }
 
-// ─── LOGIN ────────────────────────────────────────────────────────────────────
 function LoginPage({onLogin}) {
   const [email,setEmail]=useState("");
   const [password,setPassword]=useState("");
@@ -303,7 +299,6 @@ function LoginPage({onLogin}) {
   );
 }
 
-// ─── ADMIN UTENTI ─────────────────────────────────────────────────────────────
 function AdminUtenti({onClose}) {
   const [utenti,setUtenti]=useState([]);
   const [loading,setLoading]=useState(true);
@@ -394,7 +389,6 @@ function AdminUtenti({onClose}) {
   );
 }
 
-// ─── MODALI ───────────────────────────────────────────────────────────────────
 function EditReportModal({report,onSave,onClose}) {
   const [soggetto,setSoggetto]=useState(report.soggetto||"");
   const [contesto,setContesto]=useState(report.contesto||"");
@@ -498,7 +492,7 @@ function ClienteModal({cliente,onSave,onClose}) {
           <div><label style={lbl}>Codice Fiscale</label><input style={inp} value={cf} onChange={e=>setCf(e.target.value)} placeholder="RSSMRA80A01H501U"/></div>
         </div>
         <div style={{marginBottom:14}}>
-          <div style={{fontSize:"0.6rem",textTransform:"uppercase",color:"#aaa",marginBottom:10,paddingBottom:6,borderBottom:"1px solid #eee"}}>Listino prezzi personalizzato</div>
+          <div style={{fontSize:"0.6rem",textTransform:"uppercase",color:"#aaa",marginBottom:10,paddingBottom:6,borderBottom:"1px solid #eee"}}>Listino prezzi</div>
           {listino.map(v=>(
             <div key={v.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8,padding:"8px 12px",background:"#fafaf8",border:"1px solid #e8e4dc",borderRadius:3}}>
               <div style={{flex:1}}>
@@ -633,7 +627,6 @@ function OrdineModal({cliente,onSave,onClose}) {
   );
 }
 
-// ─── APP ──────────────────────────────────────────────────────────────────────
 function App() {
   const [user,      setUser]     = useState(null);
   const [profilo,   setProfilo]  = useState(null);
@@ -670,25 +663,28 @@ function App() {
 
   const isAdmin = profilo?.ruolo === "admin";
 
-  // ─── FIX: usa onAuthStateChange con timeout fallback ───────────────────────
+  // ─── FIX DEFINITIVO AUTH ──────────────────────────────────────────────────
   useEffect(()=>{
-    // Timeout di sicurezza: se dopo 5 secondi non arriva risposta, mostra login
-    const timeout = setTimeout(()=>{ setAuthLoad(false); }, 5000);
-
+    const init = async () => {
+      try {
+        const { data: { session } } = await sb.auth.getSession();
+        const u = session?.user || null;
+        setUser(u);
+        if(u){ const p = await getProfilo(u.id); setProfilo(p); }
+      } catch(e) {
+        console.error("Auth error:", e);
+      } finally {
+        setAuthLoad(false);
+      }
+    };
+    init();
     const { data: { subscription } } = sb.auth.onAuthStateChange(async (event, session) => {
-      clearTimeout(timeout);
       const u = session?.user || null;
       setUser(u);
-      if(u) {
-        const p = await getProfilo(u.id);
-        setProfilo(p);
-      } else {
-        setProfilo(null);
-      }
-      setAuthLoad(false);
+      if(u){ const p = await getProfilo(u.id); setProfilo(p); }
+      else setProfilo(null);
     });
-
-    return () => { clearTimeout(timeout); subscription.unsubscribe(); };
+    return () => subscription.unsubscribe();
   },[]);
 
   useEffect(()=>{
@@ -703,10 +699,8 @@ function App() {
   const canSearch=tab==="persona"?nome.trim().length>0:ragione.trim().length>0;
   const links=buildLinks(data);
   const sections=generateSections(data);
-
   const filtR=reports.filter(r=>{if(!searchR.trim())return true;const q=searchR.toLowerCase();return(r.soggetto||"").toLowerCase().includes(q)||(r.cf||"").toLowerCase().includes(q)||(r.piva||"").toLowerCase().includes(q)||(r.contesto||"").toLowerCase().includes(q);});
   const filtC=clienti.filter(c=>{if(!searchC.trim())return true;const q=searchC.toLowerCase();return(c.nome||"").toLowerCase().includes(q)||(c.email||"").toLowerCase().includes(q)||(c.piva||"").toLowerCase().includes(q)||(c.cf||"").toLowerCase().includes(q);});
-
   const showMsg=m=>{setMsg(m);setTimeout(()=>setMsg(""),4000);};
 
   const handleSave=async()=>{
@@ -717,7 +711,6 @@ function App() {
     else showMsg("❌ Errore salvataggio");
     setSaving(false);
   };
-
   const handleDelReport=async id=>{const ok=await deleteReport(id);if(ok){setReports(prev=>prev.filter(r=>r.id!==id));showMsg("🗑 Eliminato");}else showMsg("❌ Errore");setDelConf(null);};
   const handleEditReport=async updated=>{updated.modificato=new Date().toLocaleString("it-IT");const ok=await saveReport(updated);if(ok){setReports(prev=>prev.map(r=>r.id===updated.id?updated:r));showMsg("✅ Salvato");}else showMsg("❌ Errore");setEditRep(null);};
   const handleSaveCl=async c=>{const isNew=!editCl;const ok=await saveCliente(c);if(ok){setClienti(prev=>isNew?[c,...prev]:prev.map(x=>x.id===c.id?c:x));showMsg(isNew?"✅ Cliente aggiunto!":"✅ Cliente aggiornato!");}else showMsg("❌ Errore");setNewCl(false);setEditCl(null);};
@@ -736,12 +729,12 @@ function App() {
     <div style={{minHeight:"100vh",background:"#1a1a1a",display:"flex",alignItems:"center",justifyContent:"center"}}>
       <div style={{textAlign:"center"}}>
         <h1 style={{fontFamily:"Georgia,serif",fontSize:"3rem",color:"#f5f2eb"}}>Lex<span style={{color:"#b8302a"}}>Trace</span></h1>
-        <p style={{color:"#444",marginTop:16,fontSize:"0.75rem",letterSpacing:"0.1em"}}>CARICAMENTO...</p>
+        <p style={{color:"#555",marginTop:16,fontSize:"0.75rem",letterSpacing:"0.1em"}}>CARICAMENTO...</p>
       </div>
     </div>
   );
 
-  if(!user) return <LoginPage onLogin={async(u)=>{ setUser(u); const p=await getProfilo(u.id); setProfilo(p); }}/>;
+  if(!user) return <LoginPage onLogin={async(u)=>{setUser(u);const p=await getProfilo(u.id);setProfilo(p);}}/>;
 
   return(
     <div style={{background:"#f5f2eb",minHeight:"100vh",padding:"28px 20px"}}>
@@ -753,9 +746,7 @@ function App() {
                 Lex<span style={{color:"#b8302a"}}>Trace</span>
                 {isAdmin&&<span style={{fontSize:"0.7rem",background:"#e67e00",color:"#fff",padding:"2px 8px",borderRadius:10,marginLeft:10,verticalAlign:"middle"}}>👑 Admin</span>}
               </h1>
-              <p style={{fontSize:"0.65rem",color:"#888",marginTop:5,textTransform:"uppercase",letterSpacing:"0.06em"}}>
-                {profilo?.nome||user.email}
-              </p>
+              <p style={{fontSize:"0.65rem",color:"#888",marginTop:5,textTransform:"uppercase",letterSpacing:"0.06em"}}>{profilo?.nome||user.email}</p>
             </div>
             <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
               {navBtn("form","🔍 Ricerca")}
@@ -866,7 +857,7 @@ function App() {
 
         {view==="archivio"&&(
           <div>
-            {isAdmin&&<div style={{background:"#fff3e0",border:"1px solid #ffe0b2",borderRadius:4,padding:"10px 16px",marginBottom:16,fontSize:"0.75rem",color:"#e67e00"}}>👑 Modalità Admin — tutti i dossier</div>}
+            {isAdmin&&<div style={{background:"#fff3e0",border:"1px solid #ffe0b2",borderRadius:4,padding:"10px 16px",marginBottom:16,fontSize:"0.75rem",color:"#e67e00"}}>👑 Admin — tutti i dossier</div>}
             <div style={{position:"relative",marginBottom:20}}>
               <input style={{...inp,paddingLeft:36}} value={searchR} onChange={e=>setSearchR(e.target.value)} placeholder="Cerca per nome, CF, P.IVA, contesto..."/>
               <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"#aaa"}}>🔍</span>
@@ -911,7 +902,7 @@ function App() {
 
         {view==="clienti"&&(
           <div>
-            {isAdmin&&<div style={{background:"#fff3e0",border:"1px solid #ffe0b2",borderRadius:4,padding:"10px 16px",marginBottom:16,fontSize:"0.75rem",color:"#e67e00"}}>👑 Modalità Admin — tutti i clienti</div>}
+            {isAdmin&&<div style={{background:"#fff3e0",border:"1px solid #ffe0b2",borderRadius:4,padding:"10px 16px",marginBottom:16,fontSize:"0.75rem",color:"#e67e00"}}>👑 Admin — tutti i clienti</div>}
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,gap:12,flexWrap:"wrap"}}>
               <div style={{position:"relative",flex:1,minWidth:200}}>
                 <input style={{...inp,paddingLeft:36}} value={searchC} onChange={e=>setSearchC(e.target.value)} placeholder="Cerca per nome, email, CF, P.IVA..."/>
@@ -952,7 +943,7 @@ function App() {
                 {expandCl===c.id&&(
                   <div style={{padding:"0 18px 16px"}}>
                     <div style={{marginTop:14,marginBottom:14}}>
-                      <div style={{fontSize:"0.6rem",textTransform:"uppercase",color:"#aaa",marginBottom:8}}>Listino prezzi personale</div>
+                      <div style={{fontSize:"0.6rem",textTransform:"uppercase",color:"#aaa",marginBottom:8}}>Listino prezzi</div>
                       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:6}}>
                         {(c.listino||LISTINO_DEFAULT).map(v=>(
                           <div key={v.id} style={{padding:"8px 12px",background:"#f5f2eb",borderRadius:3,border:"1px solid #e8e4dc"}}>
@@ -1007,7 +998,6 @@ function App() {
       {editRep&&<EditReportModal report={editRep} onSave={handleEditReport} onClose={()=>setEditRep(null)}/>}
       {(newCl||editCl)&&<ClienteModal cliente={editCl||null} onSave={handleSaveCl} onClose={()=>{setNewCl(false);setEditCl(null);}}/>}
       {ordineFor&&<OrdineModal cliente={ordineFor} onSave={handleSaveOrdine} onClose={()=>setOrdineFor(null)}/>}
-
       {delConf&&(
         <div className="overlay" onClick={()=>setDelConf(null)}>
           <div className="modal" style={{maxWidth:360}} onClick={e=>e.stopPropagation()}>
