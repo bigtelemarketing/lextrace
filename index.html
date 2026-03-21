@@ -22,11 +22,24 @@
 <script type="text/babel">
 const { useState, useEffect } = React;
 
-// ─── SUPABASE ─────────────────────────────────────────────────────────────────
 const SB_URL = "https://fpvvtagszklzamwtpbjt.supabase.co";
 const SB_KEY = "sb_publishable_420Bi2d31EJp1sBlrQaUjw_ZrRugiYL";
 const sb = supabase.createClient(SB_URL, SB_KEY);
 
+// ─── AUTH ─────────────────────────────────────────────────────────────────────
+async function signIn(email, password) {
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  return { user: data?.user || null, error: error?.message || null };
+}
+async function signOut() {
+  await sb.auth.signOut();
+}
+async function getUser() {
+  const { data } = await sb.auth.getUser();
+  return data?.user || null;
+}
+
+// ─── DB ───────────────────────────────────────────────────────────────────────
 async function loadReports() {
   const { data, error } = await sb.from("reports").select("*").order("id", { ascending: false });
   if (error) { console.error(error); return []; }
@@ -250,6 +263,86 @@ function exportPreventivoPDF(cliente,ordine) {
   doc.save("Preventivo_"+(cliente.nome||"cliente").replace(/\s+/g,"_")+"_"+new Date().toISOString().slice(0,10)+".pdf");
 }
 
+// ─── LOGIN PAGE ───────────────────────────────────────────────────────────────
+function LoginPage({ onLogin }) {
+  const [email,    setEmail]    = useState("");
+  const [password, setPassword] = useState("");
+  const [loading,  setLoading]  = useState(false);
+  const [error,    setError]    = useState("");
+
+  const handleLogin = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError("");
+    const { user, error } = await signIn(email, password);
+    if (user) { onLogin(user); }
+    else { setError(error || "Credenziali non valide"); }
+    setLoading(false);
+  };
+
+  return (
+    <div style={{ minHeight:"100vh", background:"#1a1a1a", display:"flex", alignItems:"center", justifyContent:"center", padding:20 }}>
+      <div style={{ width:"100%", maxWidth:400 }}>
+        <div style={{ textAlign:"center", marginBottom:40 }}>
+          <h1 style={{ fontFamily:"Georgia,serif", fontSize:"3rem", color:"#f5f2eb", lineHeight:1 }}>
+            Lex<span style={{ color:"#b8302a" }}>Trace</span>
+          </h1>
+          <p style={{ fontSize:"0.7rem", color:"#666", marginTop:10, textTransform:"uppercase", letterSpacing:"0.1em" }}>
+            Ricerca investigativa digitale
+          </p>
+        </div>
+
+        <form onSubmit={handleLogin}>
+          <div style={{ background:"#222", border:"1px solid #333", borderRadius:6, padding:32 }}>
+            <div style={{ marginBottom:20 }}>
+              <label style={{ display:"block", fontSize:"0.62rem", textTransform:"uppercase", letterSpacing:"0.1em", color:"#666", marginBottom:8 }}>Email</label>
+              <input
+                type="email"
+                value={email}
+                onChange={e=>setEmail(e.target.value)}
+                required
+                placeholder="email@esempio.it"
+                style={{ width:"100%", padding:"11px 14px", background:"#2a2a2a", border:"1px solid #444", borderRadius:4, color:"#f5f2eb", fontFamily:"monospace", fontSize:"0.85rem", outline:"none" }}
+                onFocus={e=>e.target.style.borderColor="#b8302a"}
+                onBlur={e=>e.target.style.borderColor="#444"}
+              />
+            </div>
+            <div style={{ marginBottom:24 }}>
+              <label style={{ display:"block", fontSize:"0.62rem", textTransform:"uppercase", letterSpacing:"0.1em", color:"#666", marginBottom:8 }}>Password</label>
+              <input
+                type="password"
+                value={password}
+                onChange={e=>setPassword(e.target.value)}
+                required
+                placeholder="••••••••"
+                style={{ width:"100%", padding:"11px 14px", background:"#2a2a2a", border:"1px solid #444", borderRadius:4, color:"#f5f2eb", fontFamily:"monospace", fontSize:"0.85rem", outline:"none" }}
+                onFocus={e=>e.target.style.borderColor="#b8302a"}
+                onBlur={e=>e.target.style.borderColor="#444"}
+              />
+            </div>
+            {error && (
+              <div style={{ background:"#3a1a1a", border:"1px solid #b8302a", borderRadius:4, padding:"10px 14px", marginBottom:16, fontSize:"0.78rem", color:"#ff6b6b" }}>
+                ⚠ {error}
+              </div>
+            )}
+            <button
+              type="submit"
+              disabled={loading}
+              style={{ width:"100%", padding:13, background: loading?"#555":"#b8302a", color:"#fff", border:"none", borderRadius:4, cursor: loading?"not-allowed":"pointer", fontFamily:"monospace", fontSize:"0.82rem", textTransform:"uppercase", letterSpacing:"0.06em" }}>
+              {loading ? "Accesso in corso..." : "Accedi →"}
+            </button>
+          </div>
+        </form>
+
+        <p style={{ textAlign:"center", fontSize:"0.62rem", color:"#444", marginTop:24, letterSpacing:"0.06em" }}>
+          LEXTRACE · USO PROFESSIONALE RISERVATO · GDPR ART. 6
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ─── MODALI ───────────────────────────────────────────────────────────────────
 function EditReportModal({report,onSave,onClose}) {
   const [soggetto,setSoggetto]=useState(report.soggetto||"");
   const [contesto,setContesto]=useState(report.contesto||"");
@@ -489,40 +582,51 @@ function OrdineModal({cliente,onSave,onClose}) {
   );
 }
 
+// ─── APP PRINCIPALE ───────────────────────────────────────────────────────────
 function App() {
-  const [tab,setTab]=useState("persona");
-  const [nome,setNome]=useState("");
-  const [cognome,setCognome]=useState("");
-  const [cf,setCf]=useState("");
-  const [citta,setCitta]=useState("");
-  const [ragione,setRagione]=useState("");
-  const [piva,setPiva]=useState("");
-  const [sede,setSede]=useState("");
-  const [contesto,setContesto]=useState("");
-  const [note,setNote]=useState("");
-  const [sources,setSources]=useState(["cciaa","inipec","linkedin","gazzetta","tribunali"]);
-  const [view,setView]=useState("form");
-  const [subview,setSubview]=useState("dossier");
-  const [reports,setReports]=useState([]);
-  const [clienti,setClienti]=useState([]);
-  const [saving,setSaving]=useState(false);
-  const [loading,setLoading]=useState(false);
-  const [msg,setMsg]=useState("");
-  const [searchR,setSearchR]=useState("");
-  const [searchC,setSearchC]=useState("");
-  const [editRep,setEditRep]=useState(null);
-  const [delConf,setDelConf]=useState(null);
-  const [delClConf,setDelClConf]=useState(null);
-  const [editCl,setEditCl]=useState(null);
-  const [newCl,setNewCl]=useState(false);
-  const [ordineFor,setOrdineFor]=useState(null);
-  const [expandCl,setExpandCl]=useState(null);
-  const [checklist,setChecklist]=useState(CHECKLIST_ITEMS.map(i=>({...i,stato:"non_verificato",note:""})));
+  const [user,      setUser]     = useState(null);
+  const [authLoad,  setAuthLoad] = useState(true);
+
+  const [tab,       setTab]      = useState("persona");
+  const [nome,      setNome]     = useState("");
+  const [cognome,   setCognome]  = useState("");
+  const [cf,        setCf]       = useState("");
+  const [citta,     setCitta]    = useState("");
+  const [ragione,   setRagione]  = useState("");
+  const [piva,      setPiva]     = useState("");
+  const [sede,      setSede]     = useState("");
+  const [contesto,  setContesto] = useState("");
+  const [note,      setNote]     = useState("");
+  const [sources,   setSources]  = useState(["cciaa","inipec","linkedin","gazzetta","tribunali"]);
+  const [view,      setView]     = useState("form");
+  const [subview,   setSubview]  = useState("dossier");
+  const [reports,   setReports]  = useState([]);
+  const [clienti,   setClienti]  = useState([]);
+  const [saving,    setSaving]   = useState(false);
+  const [loading,   setLoading]  = useState(false);
+  const [msg,       setMsg]      = useState("");
+  const [searchR,   setSearchR]  = useState("");
+  const [searchC,   setSearchC]  = useState("");
+  const [editRep,   setEditRep]  = useState(null);
+  const [delConf,   setDelConf]  = useState(null);
+  const [delClConf, setDelClConf]= useState(null);
+  const [editCl,    setEditCl]   = useState(null);
+  const [newCl,     setNewCl]    = useState(false);
+  const [ordineFor, setOrdineFor]= useState(null);
+  const [expandCl,  setExpandCl] = useState(null);
+  const [checklist, setChecklist]= useState(CHECKLIST_ITEMS.map(i=>({...i,stato:"non_verificato",note:""})));
+
+  // Controlla sessione all'avvio
+  useEffect(()=>{
+    getUser().then(u=>{ setUser(u); setAuthLoad(false); });
+    sb.auth.onAuthStateChange((_event, session)=>{ setUser(session?.user||null); });
+  },[]);
 
   useEffect(()=>{
+    if(!user) return;
     if(view==="archivio"){setLoading(true);loadReports().then(r=>{setReports(r);setLoading(false)});}
     if(view==="clienti"){setLoading(true);loadClienti().then(c=>{setClienti(c);setLoading(false)});}
-  },[view]);
+  },[view, user]);
 
   const toggleSrc=id=>setSources(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
   const data={tab,nome,cognome,cf,citta,ragione,piva,sede,contesto,note,sources};
@@ -540,76 +644,55 @@ function App() {
     setSaving(true);showMsg("⏳ Salvataggio...");
     const report={id:Date.now(),data:new Date().toLocaleString("it-IT"),soggetto,tab,contesto:contesto||"Recupero crediti",note,cf,piva,sections,links,checklist};
     const ok=await saveReport(report);
-    if(ok){setReports(prev=>[report,...prev]);showMsg("✅ Salvato! Visibile da qualsiasi PC.");}
+    if(ok){setReports(prev=>[report,...prev]);showMsg("✅ Salvato!");}
     else showMsg("❌ Errore salvataggio");
     setSaving(false);
   };
 
-  const handleDelReport=async id=>{
-    const ok=await deleteReport(id);
-    if(ok){setReports(prev=>prev.filter(r=>r.id!==id));showMsg("🗑 Eliminato");}else showMsg("❌ Errore");
-    setDelConf(null);
-  };
+  const handleDelReport=async id=>{const ok=await deleteReport(id);if(ok){setReports(prev=>prev.filter(r=>r.id!==id));showMsg("🗑 Eliminato");}else showMsg("❌ Errore");setDelConf(null);};
+  const handleEditReport=async updated=>{updated.modificato=new Date().toLocaleString("it-IT");const ok=await saveReport(updated);if(ok){setReports(prev=>prev.map(r=>r.id===updated.id?updated:r));showMsg("✅ Salvato");}else showMsg("❌ Errore");setEditRep(null);};
+  const handleSaveCl=async c=>{const isNew=!editCl;const ok=await saveCliente(c);if(ok){setClienti(prev=>isNew?[c,...prev]:prev.map(x=>x.id===c.id?c:x));showMsg(isNew?"✅ Cliente aggiunto!":"✅ Cliente aggiornato!");}else showMsg("❌ Errore");setNewCl(false);setEditCl(null);};
+  const handleDelCl=async id=>{const ok=await deleteCliente(id);if(ok){setClienti(prev=>prev.filter(c=>c.id!==id));showMsg("🗑 Cliente eliminato");}else showMsg("❌ Errore");setDelClConf(null);};
+  const handleSaveOrdine=async ordine=>{const cliente=clienti.find(c=>c.id===ordineFor.id);const updated={...cliente,ordini:[ordine,...(cliente.ordini||[])]};const ok=await saveCliente(updated);if(ok){setClienti(prev=>prev.map(c=>c.id===updated.id?updated:c));showMsg("✅ Ordine creato!");}else showMsg("❌ Errore");setOrdineFor(null);};
+  const handleStatoPag=async(cid,oid,stato)=>{const cliente=clienti.find(c=>c.id===cid);const updated={...cliente,ordini:(cliente.ordini||[]).map(o=>o.id===oid?{...o,stato}:o)};const ok=await saveCliente(updated);if(ok){setClienti(prev=>prev.map(c=>c.id===updated.id?updated:c));}else showMsg("❌ Errore");};
 
-  const handleEditReport=async updated=>{
-    updated.modificato=new Date().toLocaleString("it-IT");
-    const ok=await saveReport(updated);
-    if(ok){setReports(prev=>prev.map(r=>r.id===updated.id?updated:r));showMsg("✅ Salvato");}else showMsg("❌ Errore");
-    setEditRep(null);
-  };
-
-  const handleSaveCl=async c=>{
-    const isNew=!editCl;
-    const ok=await saveCliente(c);
-    if(ok){
-      setClienti(prev=>isNew?[c,...prev]:prev.map(x=>x.id===c.id?c:x));
-      showMsg(isNew?"✅ Cliente aggiunto!":"✅ Cliente aggiornato!");
-    }else showMsg("❌ Errore");
-    setNewCl(false);setEditCl(null);
-  };
-
-  const handleDelCl=async id=>{
-    const ok=await deleteCliente(id);
-    if(ok){setClienti(prev=>prev.filter(c=>c.id!==id));showMsg("🗑 Cliente eliminato");}else showMsg("❌ Errore");
-    setDelClConf(null);
-  };
-
-  const handleSaveOrdine=async ordine=>{
-    const cliente=clienti.find(c=>c.id===ordineFor.id);
-    const updated={...cliente,ordini:[ordine,...(cliente.ordini||[])]};
-    const ok=await saveCliente(updated);
-    if(ok){setClienti(prev=>prev.map(c=>c.id===updated.id?updated:c));showMsg("✅ Ordine creato!");}else showMsg("❌ Errore");
-    setOrdineFor(null);
-  };
-
-  const handleStatoPag=async(cid,oid,stato)=>{
-    const cliente=clienti.find(c=>c.id===cid);
-    const updated={...cliente,ordini:(cliente.ordini||[]).map(o=>o.id===oid?{...o,stato}:o)};
-    const ok=await saveCliente(updated);
-    if(ok){setClienti(prev=>prev.map(c=>c.id===updated.id?updated:c));}else showMsg("❌ Errore");
-  };
-
-  const inp={width:"100%",padding:"9px 12px",border:"1px solid #ccc",borderRadius:3,fontFamily:"monospace",fontSize:"0.82rem",background:"#fafal8",outline:"none"};
+  const inp={width:"100%",padding:"9px 12px",border:"1px solid #ccc",borderRadius:3,fontFamily:"monospace",fontSize:"0.82rem",background:"#fafaf8",outline:"none"};
   const lbl={display:"block",fontSize:"0.6rem",textTransform:"uppercase",letterSpacing:"0.08em",color:"#888",marginBottom:5};
   const btnS=(bg,dis)=>({padding:"12px 0",background:dis?"#ccc":bg,color:"#fff",border:"none",borderRadius:3,cursor:dis?"not-allowed":"pointer",fontFamily:"monospace",fontSize:"0.75rem",textTransform:"uppercase",width:"100%"});
   const navBtn=(v,label)=><button onClick={()=>setView(v)} style={{background:view===v?"#1a1a1a":"#e8e4dc",color:view===v?"#fff":"#555",border:"none",borderRadius:3,padding:"7px 14px",cursor:"pointer",fontFamily:"monospace",fontSize:"0.68rem",textTransform:"uppercase"}}>{label}</button>;
   const totCl=c=>(c.ordini||[]).reduce((a,o)=>a+(o.totale||0),0);
   const arrCl=c=>(c.ordini||[]).filter(o=>o.stato==="arretrato").reduce((a,o)=>a+(o.totale||0),0);
 
+  // Loading iniziale autenticazione
+  if(authLoad) return(
+    <div style={{minHeight:"100vh",background:"#1a1a1a",display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{textAlign:"center"}}>
+        <h1 style={{fontFamily:"Georgia,serif",fontSize:"3rem",color:"#f5f2eb"}}>Lex<span style={{color:"#b8302a"}}>Trace</span></h1>
+        <p style={{color:"#444",marginTop:16,fontSize:"0.75rem",letterSpacing:"0.1em"}}>CARICAMENTO...</p>
+      </div>
+    </div>
+  );
+
+  // Pagina login
+  if(!user) return <LoginPage onLogin={setUser}/>;
+
+  // App principale
   return(
     <div style={{background:"#f5f2eb",minHeight:"100vh",padding:"28px 20px"}}>
       <div style={{maxWidth:860,margin:"0 auto"}}>
-
         <div style={{borderBottom:"2px solid #1a1a1a",paddingBottom:16,marginBottom:24}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
             <div>
               <h1 style={{fontFamily:"Georgia,serif",fontSize:"2.2rem",lineHeight:1}}>Lex<span style={{color:"#b8302a"}}>Trace</span></h1>
-              <p style={{fontSize:"0.65rem",color:"#888",marginTop:5,textTransform:"uppercase",letterSpacing:"0.06em"}}>Ricerca investigativa · Dati sincronizzati su cloud</p>
+              <p style={{fontSize:"0.65rem",color:"#888",marginTop:5,textTransform:"uppercase",letterSpacing:"0.06em"}}>Ricerca investigativa · {user.email}</p>
             </div>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
               {navBtn("form","🔍 Ricerca")}
               {navBtn("archivio","📁 Archivio"+(reports.length>0?" ("+reports.length+")":""))}
               {navBtn("clienti","👥 Clienti"+(clienti.length>0?" ("+clienti.length+")":""))}
+              <button onClick={async()=>{await signOut();setUser(null);}} style={{background:"#555",color:"#fff",border:"none",borderRadius:3,padding:"7px 14px",cursor:"pointer",fontFamily:"monospace",fontSize:"0.68rem",textTransform:"uppercase"}}>
+                Esci
+              </button>
             </div>
           </div>
         </div>
@@ -643,7 +726,6 @@ function App() {
               )}
               <div style={{marginTop:12}}><label style={lbl}>Note personali</label><textarea style={{...inp,resize:"vertical"}} rows={2} value={note} onChange={e=>setNote(e.target.value)} placeholder="Informazioni aggiuntive..."/></div>
             </div>
-
             <div style={{background:"#fff",border:"1px solid #d8d4cc",borderRadius:4,padding:22,marginBottom:16}}>
               <div style={{fontSize:"0.6rem",textTransform:"uppercase",color:"#aaa",letterSpacing:"0.1em",marginBottom:14,paddingBottom:8,borderBottom:"1px solid #eee"}}>Fonti</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
@@ -655,7 +737,6 @@ function App() {
                 ))}
               </div>
             </div>
-
             {canSearch&&(
               <>
                 <div style={{display:"flex",borderBottom:"1px solid #ccc",marginBottom:16}}>
@@ -663,7 +744,6 @@ function App() {
                     <button key={v} onClick={()=>setSubview(v)} style={{background:"none",border:"none",marginBottom:-1,cursor:"pointer",fontFamily:"monospace",borderBottom:subview===v?"2px solid #b8302a":"2px solid transparent",padding:"8px 16px",fontSize:"0.68rem",textTransform:"uppercase",color:subview===v?"#1a1a1a":"#888"}}>{l}</button>
                   ))}
                 </div>
-
                 {subview==="dossier"&&(
                   <div>
                     {sections.map((s,i)=>(
@@ -678,7 +758,6 @@ function App() {
                     </div>
                   </div>
                 )}
-
                 {subview==="links"&&(
                   <div>
                     {links.map((group,gi)=>(
@@ -701,7 +780,6 @@ function App() {
                     </div>
                   </div>
                 )}
-
                 {subview==="checklist"&&(
                   <div>
                     <Checklist checklist={checklist} onChange={setChecklist}/>
@@ -849,7 +927,7 @@ function App() {
         )}
 
         <div style={{marginTop:20,fontSize:"0.62rem",color:"#aaa",lineHeight:1.7,borderTop:"1px solid #ddd",paddingTop:12}}>
-          <strong style={{color:"#888"}}>⚖ Uso professionale riservato.</strong> Solo fonti pubbliche lecite. GDPR Art. 6. · Dati salvati su Supabase.
+          <strong style={{color:"#888"}}>⚖ Uso professionale riservato.</strong> Solo fonti pubbliche lecite. GDPR Art. 6.
         </div>
       </div>
 
