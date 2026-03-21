@@ -32,10 +32,8 @@ async function signIn(email, password) {
 }
 async function signOut() { await sb.auth.signOut(); }
 async function getProfilo(userId) {
-  try {
-    const { data } = await sb.from("profili").select("*").eq("id", userId).single();
-    return data;
-  } catch { return null; }
+  try { const { data } = await sb.from("profili").select("*").eq("id", userId).single(); return data; }
+  catch { return null; }
 }
 async function getAllUtenti() {
   const { data } = await sb.from("profili").select("*").order("email");
@@ -628,9 +626,10 @@ function OrdineModal({cliente,onSave,onClose}) {
 }
 
 function App() {
+  // ─── authLoad=FALSE: parte subito sul login, nessun blocco ─────────────────
   const [user,      setUser]     = useState(null);
   const [profilo,   setProfilo]  = useState(null);
-  const [authLoad,  setAuthLoad] = useState(true);
+  const [authLoad,  setAuthLoad] = useState(false);
   const [showAdmin, setShowAdmin]= useState(false);
   const [tab,       setTab]      = useState("persona");
   const [nome,      setNome]     = useState("");
@@ -663,21 +662,15 @@ function App() {
 
   const isAdmin = profilo?.ruolo === "admin";
 
-  // ─── FIX DEFINITIVO AUTH ──────────────────────────────────────────────────
   useEffect(()=>{
-    const init = async () => {
-      try {
-        const { data: { session } } = await sb.auth.getSession();
-        const u = session?.user || null;
-        setUser(u);
-        if(u){ const p = await getProfilo(u.id); setProfilo(p); }
-      } catch(e) {
-        console.error("Auth error:", e);
-      } finally {
-        setAuthLoad(false);
+    // Controlla sessione esistente in background senza bloccare
+    sb.auth.getSession().then(({ data: { session } }) => {
+      if(session?.user){
+        setUser(session.user);
+        getProfilo(session.user.id).then(p=>setProfilo(p));
       }
-    };
-    init();
+    });
+    // Ascolta cambiamenti auth
     const { data: { subscription } } = sb.auth.onAuthStateChange(async (event, session) => {
       const u = session?.user || null;
       setUser(u);
@@ -725,15 +718,7 @@ function App() {
   const totCl=c=>(c.ordini||[]).reduce((a,o)=>a+(o.totale||0),0);
   const arrCl=c=>(c.ordini||[]).filter(o=>o.stato==="arretrato").reduce((a,o)=>a+(o.totale||0),0);
 
-  if(authLoad) return(
-    <div style={{minHeight:"100vh",background:"#1a1a1a",display:"flex",alignItems:"center",justifyContent:"center"}}>
-      <div style={{textAlign:"center"}}>
-        <h1 style={{fontFamily:"Georgia,serif",fontSize:"3rem",color:"#f5f2eb"}}>Lex<span style={{color:"#b8302a"}}>Trace</span></h1>
-        <p style={{color:"#555",marginTop:16,fontSize:"0.75rem",letterSpacing:"0.1em"}}>CARICAMENTO...</p>
-      </div>
-    </div>
-  );
-
+  // Mai bloccato — mostra login direttamente se non loggato
   if(!user) return <LoginPage onLogin={async(u)=>{setUser(u);const p=await getProfilo(u.id);setProfilo(p);}}/>;
 
   return(
