@@ -24,47 +24,86 @@ const { useState, useEffect } = React;
 const GH_TOKEN   = "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";
 const GIST_FILE  = "lextrace_reports.json";
 const GIST_FILE2 = "lextrace_clienti.json";
-let   GIST_ID    = localStorage.getItem("lextrace_gist_id") || "";
+let   GIST_ID    = "";
 
 async function getOrCreateGist() {
-  if (GIST_ID) return GIST_ID;
-  const list = await fetch("https://api.github.com/gists", { headers: { Authorization: "token " + GH_TOKEN } }).then(r => r.json());
-  const found = Array.isArray(list) && list.find(g => g.files && g.files[GIST_FILE]);
-  if (found) { GIST_ID = found.id; localStorage.setItem("lextrace_gist_id", GIST_ID); return GIST_ID; }
-  const created = await fetch("https://api.github.com/gists", {
-    method: "POST",
-    headers: { Authorization: "token " + GH_TOKEN, "Content-Type": "application/json" },
-    body: JSON.stringify({ description: "LexTrace Data", public: false, files: {
-      [GIST_FILE]:  { content: JSON.stringify({ reports: [] }) },
-      [GIST_FILE2]: { content: JSON.stringify({ clienti: [] }) },
-    }})
-  }).then(r => r.json());
-  GIST_ID = created.id;
-  localStorage.setItem("lextrace_gist_id", GIST_ID);
-  return GIST_ID;
+  // Cerca sempre il Gist dalla lista, ignora localStorage per evitare ID scaduti
+  try {
+    const list = await fetch("https://api.github.com/gists?per_page=100", {
+      headers: { Authorization: "token " + GH_TOKEN }
+    }).then(r => r.json());
+
+    if (!Array.isArray(list)) {
+      console.error("Errore API GitHub:", list);
+      return null;
+    }
+
+    const found = list.find(g => g.files && g.files[GIST_FILE]);
+    if (found) {
+      GIST_ID = found.id;
+      localStorage.setItem("lextrace_gist_id", GIST_ID);
+      return GIST_ID;
+    }
+
+    // Crea nuovo Gist
+    const created = await fetch("https://api.github.com/gists", {
+      method: "POST",
+      headers: { Authorization: "token " + GH_TOKEN, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        description: "LexTrace Data",
+        public: false,
+        files: {
+          [GIST_FILE]:  { content: JSON.stringify({ reports: [] }) },
+          [GIST_FILE2]: { content: JSON.stringify({ clienti: [] }) },
+        }
+      })
+    }).then(r => r.json());
+
+    if (!created.id) {
+      console.error("Errore creazione Gist:", created);
+      return null;
+    }
+
+    GIST_ID = created.id;
+    localStorage.setItem("lextrace_gist_id", GIST_ID);
+    return GIST_ID;
+  } catch(e) {
+    console.error("Errore getOrCreateGist:", e);
+    return null;
+  }
 }
 
 async function loadGist(file) {
   try {
     const id = await getOrCreateGist();
-    const g  = await fetch("https://api.github.com/gists/" + id, { headers: { Authorization: "token " + GH_TOKEN } }).then(r => r.json());
+    if (!id) return [];
+    const g = await fetch("https://api.github.com/gists/" + id, {
+      headers: { Authorization: "token " + GH_TOKEN }
+    }).then(r => r.json());
     const raw = g.files?.[file]?.content;
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     return parsed.reports || parsed.clienti || [];
-  } catch { return []; }
+  } catch(e) {
+    console.error("Errore loadGist:", e);
+    return [];
+  }
 }
 
 async function saveGist(file, key, data) {
   try {
     const id = await getOrCreateGist();
-    await fetch("https://api.github.com/gists/" + id, {
+    if (!id) return false;
+    const res = await fetch("https://api.github.com/gists/" + id, {
       method: "PATCH",
       headers: { Authorization: "token " + GH_TOKEN, "Content-Type": "application/json" },
       body: JSON.stringify({ files: { [file]: { content: JSON.stringify({ [key]: data }) } } })
     });
-    return true;
-  } catch { return false; }
+    return res.ok;
+  } catch(e) {
+    console.error("Errore saveGist:", e);
+    return false;
+  }
 }
 
 const loadReports = () => loadGist(GIST_FILE);
@@ -73,41 +112,54 @@ const loadClienti = () => loadGist(GIST_FILE2);
 const saveClienti = (d) => saveGist(GIST_FILE2, "clienti", d);
 
 const SOURCES = [
-  { id: "cciaa",     name: "Registro Imprese / CCIAA", cost: "~€7-15" },
-  { id: "inipec",    name: "IniPEC / PEC ufficiali",   cost: "Gratuito" },
-  { id: "linkedin",  name: "LinkedIn",                 cost: "Gratuito" },
-  { id: "gazzetta",  name: "Gazzetta Ufficiale",       cost: "Gratuito" },
-  { id: "tribunali", name: "Tribunali / Fallimenti",   cost: "Gratuito" },
-  { id: "cerved",    name: "Cerved / CRIF",            cost: "€50-200" },
+  { id:"cciaa",     name:"Registro Imprese / CCIAA", cost:"~€7-15" },
+  { id:"inipec",    name:"IniPEC / PEC ufficiali",   cost:"Gratuito" },
+  { id:"linkedin",  name:"LinkedIn",                 cost:"Gratuito" },
+  { id:"gazzetta",  name:"Gazzetta Ufficiale",       cost:"Gratuito" },
+  { id:"tribunali", name:"Tribunali / Fallimenti",   cost:"Gratuito" },
+  { id:"cerved",    name:"Cerved / CRIF",            cost:"€50-200" },
 ];
 
 const CHECKLIST_ITEMS = [
-  { id: "pra",      label: "Auto/Moto — PRA",              fonte: "ACI/PRA",            link: "https://www.aci.it/i-servizi/sportello-online/visura-pra.html" },
-  { id: "catasto",  label: "Immobili — Catasto",           fonte: "Agenzia Entrate",     link: "https://www.agenziaentrate.gov.it/portale/web/guest/schede/altri-servizi/consultazione-banche-dati-catastali" },
-  { id: "ipoteche", label: "Ipoteche/Vincoli",             fonte: "Agenzia Entrate",     link: "https://www.agenziaentrate.gov.it/portale/web/guest/schede/altri-servizi/ispezione-ipotecaria" },
-  { id: "inps",     label: "Datore lavoro/Reddito — INPS", fonte: "INPS",                link: "https://www.inps.it" },
-  { id: "banca",    label: "Conti correnti",               fonte: "Pignoramento terzi",  link: "https://portaletribunali.giustizia.it" },
-  { id: "telefono", label: "Numeri di telefono",           fonte: "OSINT/Investigatore", link: "https://www.paginebianche.it" },
-  { id: "registro", label: "Cariche societarie",           fonte: "Registro Imprese",    link: "https://www.registroimprese.it" },
-  { id: "gazzetta2",label: "Procedure concorsuali",        fonte: "Gazzetta Ufficiale",  link: "https://www.gazzettaufficiale.it" },
+  { id:"pra",       label:"Auto/Moto — PRA",              fonte:"ACI/PRA",            link:"https://www.aci.it/i-servizi/sportello-online/visura-pra.html" },
+  { id:"catasto",   label:"Immobili — Catasto",           fonte:"Agenzia Entrate",     link:"https://www.agenziaentrate.gov.it/portale/web/guest/schede/altri-servizi/consultazione-banche-dati-catastali" },
+  { id:"ipoteche",  label:"Ipoteche/Vincoli",             fonte:"Agenzia Entrate",     link:"https://www.agenziaentrate.gov.it/portale/web/guest/schede/altri-servizi/ispezione-ipotecaria" },
+  { id:"inps",      label:"Datore lavoro/Reddito — INPS", fonte:"INPS",                link:"https://www.inps.it" },
+  { id:"banca",     label:"Conti correnti",               fonte:"Pignoramento terzi",  link:"https://portaletribunali.giustizia.it" },
+  { id:"telefono",  label:"Numeri di telefono",           fonte:"OSINT/Investigatore", link:"https://www.paginebianche.it" },
+  { id:"registro",  label:"Cariche societarie",           fonte:"Registro Imprese",    link:"https://www.registroimprese.it" },
+  { id:"gazzetta2", label:"Procedure concorsuali",        fonte:"Gazzetta Ufficiale",  link:"https://www.gazzettaufficiale.it" },
 ];
 
 const LISTINO_DEFAULT = [
-  { id: "base",     nome: "Dossier Base",     desc: "Ricerca web + Registro Imprese",        prezzo: 49 },
-  { id: "standard", nome: "Dossier Standard", desc: "Base + PRA + Catasto + IniPEC",          prezzo: 99 },
-  { id: "completo", nome: "Dossier Completo", desc: "Standard + INPS + Cerved + Telefono",    prezzo: 199 },
-  { id: "urgente",  nome: "Urgenza 24h",      desc: "Qualsiasi dossier con priorità massima", prezzo: 80 },
+  { id:"base",     nome:"Dossier Base",     desc:"Ricerca web + Registro Imprese",        prezzo:49 },
+  { id:"standard", nome:"Dossier Standard", desc:"Base + PRA + Catasto + IniPEC",          prezzo:99 },
+  { id:"completo", nome:"Dossier Completo", desc:"Standard + INPS + Cerved + Telefono",    prezzo:199 },
+  { id:"urgente",  nome:"Urgenza 24h",      desc:"Qualsiasi dossier con priorità massima", prezzo:80 },
 ];
 
 const STATI_PAG       = ["in_attesa","pagato","arretrato","annullato"];
 const STATI_PAG_LABEL = { in_attesa:"⏳ In attesa", pagato:"✅ Pagato", arretrato:"🔴 Arretrato", annullato:"✗ Annullato" };
 const STATI_PAG_COLOR = { in_attesa:"#e67e00", pagato:"#2e7d32", arretrato:"#b8302a", annullato:"#888" };
 
+const DOSSIER_OPZIONI = [
+  { id:"web",        label:"Ricerca web e notizie" },
+  { id:"registro",   label:"Registro Imprese / CCIAA" },
+  { id:"pra",        label:"Veicoli intestati (PRA)" },
+  { id:"catasto",    label:"Immobili (Catasto)" },
+  { id:"ipoteche",   label:"Ipoteche e vincoli" },
+  { id:"inps",       label:"Datore lavoro / Reddito (INPS)" },
+  { id:"banca",      label:"Conti correnti bancari" },
+  { id:"telefono",   label:"Numeri di telefono" },
+  { id:"linkedin",   label:"Profilo LinkedIn" },
+  { id:"fallimenti", label:"Fallimenti / Procedure concorsuali" },
+];
+
 function buildLinks(data) {
-  const isP = data.tab === "persona";
-  const q   = encodeURIComponent(`"${isP ? data.nome+" "+data.cognome : data.ragione}"`);
-  const qR  = encodeURIComponent(isP ? data.nome+" "+data.cognome : data.ragione);
-  const qCf = encodeURIComponent(data.cf || qR);
+  const isP = data.tab==="persona";
+  const q   = encodeURIComponent(`"${isP?data.nome+" "+data.cognome:data.ragione}"`);
+  const qR  = encodeURIComponent(isP?data.nome+" "+data.cognome:data.ragione);
+  const qCf = encodeURIComponent(data.cf||qR);
   return [
     { label:"🔍 Motori di ricerca", links:[
       { name:"Google — menzioni",         url:`https://www.google.com/search?q=${q}` },
@@ -144,20 +196,20 @@ function buildLinks(data) {
 }
 
 function generateSections(data) {
-  const isP  = data.tab === "persona";
-  const nome = isP ? (data.nome+" "+data.cognome).trim() : data.ragione;
+  const isP  = data.tab==="persona";
+  const nome = isP?(data.nome+" "+data.cognome).trim():data.ragione;
   const oggi = new Date().toLocaleDateString("it-IT");
   return [
     { title:"DOSSIER INVESTIGATIVO", content:[
-        "Data: "+oggi,"Soggetto: "+nome,"Tipo: "+(isP?"Persona Fisica":"Persona Giuridica"),
+        "Data: "+oggi, "Soggetto: "+nome, "Tipo: "+(isP?"Persona Fisica":"Persona Giuridica"),
         isP&&data.cf?"C.F.: "+data.cf:"", isP&&data.citta?"Città: "+data.citta:"",
         !isP&&data.piva?"P.IVA: "+data.piva:"", !isP&&data.sede?"Sede: "+data.sede:"",
         "Contesto: "+(data.contesto||"Recupero crediti"), data.note?"Note: "+data.note:"",
       ].filter(Boolean).join("\n")
     },
-    { title:"1. PERCORSO DI RICERCA", content: isP
-      ? "STEP 1 — Registro Imprese: cariche, partecipazioni\nSTEP 2 — LinkedIn: profilo professionale\nSTEP 3 — Google + News: menzioni e segnali negativi\nSTEP 4 — IniPEC: PEC se titolare d'impresa\nSTEP 5 — Gazzetta Ufficiale: procedure concorsuali\nSTEP 6 — Agenzia Entrate: catasto e ipoteche"
-      : "STEP 1 — Registro Imprese: visura camerale (~€7-15)\nSTEP 2 — Telemaco: bilanci e protesti\nSTEP 3 — IniPEC: PEC per diffida formale\nSTEP 4 — Gazzetta Ufficiale: procedure concorsuali\nSTEP 5 — Il Fallimentarista: fallimenti\nSTEP 6 — Cerved/CRIF: report creditizio (~€50-150)"
+    { title:"1. PERCORSO DI RICERCA", content:isP
+      ?"STEP 1 — Registro Imprese: cariche, partecipazioni\nSTEP 2 — LinkedIn: profilo professionale\nSTEP 3 — Google + News: menzioni e segnali negativi\nSTEP 4 — IniPEC: PEC se titolare d'impresa\nSTEP 5 — Gazzetta Ufficiale: procedure concorsuali\nSTEP 6 — Agenzia Entrate: catasto e ipoteche"
+      :"STEP 1 — Registro Imprese: visura camerale (~€7-15)\nSTEP 2 — Telemaco: bilanci e protesti\nSTEP 3 — IniPEC: PEC per diffida formale\nSTEP 4 — Gazzetta Ufficiale: procedure concorsuali\nSTEP 5 — Il Fallimentarista: fallimenti\nSTEP 6 — Cerved/CRIF: report creditizio (~€50-150)"
     },
     { title:"2. PATRIMONIO E BENI", content:
       "VEICOLI:\n→ Visura PRA: aci.it · Con CF, costo ~€5\n→ Dati: targa, modello, intestatario\n\nIMMOBILI:\n→ Catasto: agenziaentrate.gov.it · Gratuito con CF\n→ Ipoteche e vincoli: Conservatoria RR.II.\n\nCONTI CORRENTI:\n→ Solo con decreto ingiuntivo esecutivo\n→ Pignoramento presso terzi (banche)\n\nDATORE DI LAVORO:\n→ INPS con delega avvocato\n→ Pignoramento quinto stipendio (max 1/5)"
@@ -168,9 +220,9 @@ function generateSections(data) {
     { title:"4. SEGNALI DI RISCHIO", content:
       "• Protesti → CCIAA o Telemaco InfoCamere\n• Fallimenti → Gazzetta Ufficiale + Il Fallimentarista\n• Ipoteche → Conservatoria RR.II.\n• Bilanci negativi → ultime 3 annualità\n• Notizie negative → Google: \"truffa\" \"inadempiente\"\n• Aste beni → pvp.giustizia.it"
     },
-    { title:"5. ITER RECUPERO CREDITI", content: isP
-      ? "1. Verifica veicoli: PRA con CF\n2. Verifica immobili: catasto + ipoteche\n3. Diffida via PEC certificata\n4. Se insoluto → decreto ingiuntivo\n5. Pignoramento c/c bancario\n6. Pignoramento quinto stipendio\n7. Pignoramento immobiliare se necessario"
-      : "1. Visura camerale + bilanci\n2. Verifica immobili e veicoli aziendali\n3. Diffida via PEC (inipec.gov.it)\n4. Decreto ingiuntivo + pignoramento\n5. Pignoramento crediti verso terzi\n6. Se concordato → insinuazione al passivo"
+    { title:"5. ITER RECUPERO CREDITI", content:isP
+      ?"1. Verifica veicoli: PRA con CF\n2. Verifica immobili: catasto + ipoteche\n3. Diffida via PEC certificata\n4. Se insoluto → decreto ingiuntivo\n5. Pignoramento c/c bancario\n6. Pignoramento quinto stipendio\n7. Pignoramento immobiliare se necessario"
+      :"1. Visura camerale + bilanci\n2. Verifica immobili e veicoli aziendali\n3. Diffida via PEC (inipec.gov.it)\n4. Decreto ingiuntivo + pignoramento\n5. Pignoramento crediti verso terzi\n6. Se concordato → insinuazione al passivo"
     },
     { title:"6. CONTATTI UTILI", content:
       "• ACI/PRA: aci.it — Tel. 803.116\n• Registro Imprese: registroimprese.it — Tel. 199.50.20.20\n• IniPEC: inipec.gov.it\n• Agenzia Entrate: agenziaentrate.gov.it — Tel. 848.800.444\n• INPS: inps.it — Tel. 803.164\n• Tribunale: giustizia.it/it/tribunali\n• Cerved: cerved.com — Tel. 02.77541\n• Investigatori: aiip.it"
@@ -182,31 +234,31 @@ function exportPDF(report) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit:"mm", format:"a4" });
   const pageW = doc.internal.pageSize.getWidth();
-  const margin = 15, maxW = pageW - margin*2;
-  let y = 20;
-  const addText = (text, size, bold, color) => {
-    doc.setFontSize(size); doc.setFont("helvetica", bold?"bold":"normal");
+  const margin=15, maxW=pageW-margin*2;
+  let y=20;
+  const addText=(text,size,bold,color)=>{
+    doc.setFontSize(size);doc.setFont("helvetica",bold?"bold":"normal");
     doc.setTextColor(...(color||[30,30,30]));
-    doc.splitTextToSize(text, maxW).forEach(line => { if(y>270){doc.addPage();y=20;} doc.text(line,margin,y); y+=size*0.45; }); y+=2;
+    doc.splitTextToSize(text,maxW).forEach(line=>{if(y>270){doc.addPage();y=20;}doc.text(line,margin,y);y+=size*0.45;});y+=2;
   };
-  doc.setFillColor(184,48,42); doc.rect(0,0,pageW,14,"F");
-  doc.setFontSize(14); doc.setFont("helvetica","bold"); doc.setTextColor(255,255,255);
-  doc.text("LexTrace — Dossier Investigativo", margin, 10); y=24;
-  (report.sections||[]).forEach((s,i) => {
-    doc.setFillColor(i===0?26:46,26,26); doc.rect(margin-2,y-5,maxW+4,8,"F");
-    doc.setFontSize(8); doc.setFont("helvetica","bold"); doc.setTextColor(245,242,235);
-    doc.text(s.title,margin,y); y+=6; addText(s.content,9,false,[40,40,40]); y+=3;
+  doc.setFillColor(184,48,42);doc.rect(0,0,pageW,14,"F");
+  doc.setFontSize(14);doc.setFont("helvetica","bold");doc.setTextColor(255,255,255);
+  doc.text("LexTrace — Dossier Investigativo",margin,10);y=24;
+  (report.sections||[]).forEach((s,i)=>{
+    doc.setFillColor(i===0?26:46,26,26);doc.rect(margin-2,y-5,maxW+4,8,"F");
+    doc.setFontSize(8);doc.setFont("helvetica","bold");doc.setTextColor(245,242,235);
+    doc.text(s.title,margin,y);y+=6;addText(s.content,9,false,[40,40,40]);y+=3;
   });
-  if(report.checklist?.length) {
-    doc.setFillColor(46,46,46); doc.rect(margin-2,y-5,maxW+4,8,"F");
-    doc.setFontSize(8); doc.setFont("helvetica","bold"); doc.setTextColor(245,242,235);
-    doc.text("CHECKLIST VERIFICHE",margin,y); y+=8;
-    report.checklist.forEach(item => {
+  if(report.checklist?.length){
+    doc.setFillColor(46,46,46);doc.rect(margin-2,y-5,maxW+4,8,"F");
+    doc.setFontSize(8);doc.setFont("helvetica","bold");doc.setTextColor(245,242,235);
+    doc.text("CHECKLIST VERIFICHE",margin,y);y+=8;
+    report.checklist.forEach(item=>{
       if(y>270){doc.addPage();y=20;}
-      doc.setFontSize(9); doc.setFont("helvetica","normal"); doc.setTextColor(40,40,40);
+      doc.setFontSize(9);doc.setFont("helvetica","normal");doc.setTextColor(40,40,40);
       const s=item.stato==="completato"?"✓":item.stato==="in_corso"?"◎":"○";
-      doc.text(s+" "+item.label+(item.note?" — "+item.note:""),margin,y); y+=6;
-    }); y+=4;
+      doc.text(s+" "+item.label+(item.note?" — "+item.note:""),margin,y);y+=6;
+    });y+=4;
   }
   if(report.note){addText("NOTE PERSONALI",10,true,[184,48,42]);addText(report.note,9,false);}
   const pages=doc.internal.getNumberOfPages();
@@ -217,394 +269,357 @@ function exportPDF(report) {
 function exportPreventivoPDF(cliente, ordine) {
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit:"mm", format:"a4" });
-  const pageW = doc.internal.pageSize.getWidth();
-  const margin = 20, maxW = pageW-margin*2;
-  doc.setFillColor(184,48,42); doc.rect(0,0,pageW,18,"F");
-  doc.setFontSize(16); doc.setFont("helvetica","bold"); doc.setTextColor(255,255,255);
-  doc.text("LexTrace — Preventivo / Fattura",margin,12);
-  doc.setFontSize(9); doc.setFont("helvetica","normal");
+  const pageW=doc.internal.pageSize.getWidth();
+  const margin=20, maxW=pageW-margin*2;
+  doc.setFillColor(184,48,42);doc.rect(0,0,pageW,18,"F");
+  doc.setFontSize(16);doc.setFont("helvetica","bold");doc.setTextColor(255,255,255);
+  doc.text("LexTrace — Preventivo",margin,12);
+  doc.setFontSize(9);doc.setFont("helvetica","normal");
   doc.text("Rif. #"+ordine.id.toString().slice(-6),pageW-margin-35,12);
   let y=32;
-  doc.setFontSize(10); doc.setFont("helvetica","bold"); doc.setTextColor(30,30,30);
-  doc.text("Cliente",margin,y); y+=6;
-  doc.setFont("helvetica","normal"); doc.setFontSize(9);
-  doc.text(cliente.nome,margin,y); y+=5;
+  doc.setFontSize(10);doc.setFont("helvetica","bold");doc.setTextColor(30,30,30);
+  doc.text("Cliente",margin,y);y+=6;
+  doc.setFont("helvetica","normal");doc.setFontSize(9);
+  doc.text(cliente.nome,margin,y);y+=5;
   if(cliente.email){doc.text("Email: "+cliente.email,margin,y);y+=5;}
   if(cliente.telefono){doc.text("Tel: "+cliente.telefono,margin,y);y+=5;}
   if(cliente.piva){doc.text("P.IVA: "+cliente.piva,margin,y);y+=5;}
   if(cliente.cf){doc.text("C.F.: "+cliente.cf,margin,y);y+=5;}
   y+=6;
-  // Dettaglio dossier personalizzato
-  if(ordine.dossierPersonalizzato) {
-    doc.setFont("helvetica","bold"); doc.setFontSize(10);
-    doc.text("Dettaglio dossier",margin,y); y+=6;
-    doc.setFillColor(240,237,230); doc.rect(margin,y-4,maxW,7,"F");
-    doc.setFontSize(8); doc.setFont("helvetica","bold"); doc.setTextColor(80,80,80);
-    doc.text("Servizio incluso",margin+2,y+1); doc.text("Incluso",pageW-margin-20,y+1); y+=8;
-    doc.setFont("helvetica","normal"); doc.setTextColor(30,30,30);
-    ordine.dossierPersonalizzato.forEach((item,i) => {
+  if(ordine.dossierPersonalizzato?.length){
+    doc.setFont("helvetica","bold");doc.setFontSize(10);
+    doc.text("Contenuto dossier",margin,y);y+=6;
+    doc.setFillColor(240,237,230);doc.rect(margin,y-4,maxW,7,"F");
+    doc.setFontSize(8);doc.setFont("helvetica","bold");doc.setTextColor(80,80,80);
+    doc.text("Servizio",margin+2,y+1);doc.text("Incluso",pageW-margin-20,y+1);y+=8;
+    ordine.dossierPersonalizzato.forEach((item,i)=>{
       if(i%2===0){doc.setFillColor(250,248,245);doc.rect(margin,y-4,maxW,7,"F");}
-      doc.setFontSize(8);
-      const check = item.incluso ? "✓" : "✗";
-      doc.text(check+" "+item.label,margin+2,y);
-      doc.text(item.incluso?"Si":"No",pageW-margin-20,y); y+=7;
-    });
-    y+=4;
+      doc.setFontSize(8);doc.setFont("helvetica","normal");doc.setTextColor(30,30,30);
+      doc.text((item.incluso?"✓ ":"✗ ")+item.label,margin+2,y);
+      doc.text(item.incluso?"Si":"No",pageW-margin-20,y);y+=7;
+    });y+=4;
   }
-  doc.setFont("helvetica","bold"); doc.setFontSize(10);
-  doc.text("Voci",margin,y); y+=6;
-  doc.setFillColor(240,237,230); doc.rect(margin,y-4,maxW,7,"F");
-  doc.setFontSize(8); doc.setFont("helvetica","bold"); doc.setTextColor(80,80,80);
-  doc.text("Servizio",margin+2,y+1); doc.text("Soggetto",margin+80,y+1); doc.text("Prezzo",pageW-margin-20,y+1); y+=8;
-  doc.setFont("helvetica","normal"); doc.setTextColor(30,30,30);
-  (ordine.voci||[]).forEach((v,i) => {
+  doc.setFont("helvetica","bold");doc.setFontSize(10);doc.setTextColor(30,30,30);
+  doc.text("Voci",margin,y);y+=6;
+  doc.setFillColor(240,237,230);doc.rect(margin,y-4,maxW,7,"F");
+  doc.setFontSize(8);doc.setFont("helvetica","bold");doc.setTextColor(80,80,80);
+  doc.text("Servizio",margin+2,y+1);doc.text("Soggetto",margin+80,y+1);doc.text("Prezzo",pageW-margin-20,y+1);y+=8;
+  doc.setFont("helvetica","normal");doc.setTextColor(30,30,30);
+  (ordine.voci||[]).forEach((v,i)=>{
     if(i%2===0){doc.setFillColor(250,248,245);doc.rect(margin,y-4,maxW,7,"F");}
     doc.setFontSize(8);
-    doc.text(v.servizio||"-",margin+2,y); doc.text(v.soggetto||"-",margin+80,y); doc.text("€"+v.prezzo,pageW-margin-20,y); y+=7;
+    doc.text(v.servizio||"-",margin+2,y);doc.text(v.soggetto||"-",margin+80,y);doc.text("€"+v.prezzo,pageW-margin-20,y);y+=7;
   });
   y+=4;
-  doc.setFillColor(184,48,42); doc.rect(margin,y-4,maxW,9,"F");
-  doc.setFontSize(10); doc.setFont("helvetica","bold"); doc.setTextColor(255,255,255);
-  doc.text("TOTALE",margin+2,y+1); doc.text("€"+ordine.totale,pageW-margin-20,y+1); y+=14;
+  if(ordine.sconto>0){
+    doc.setFontSize(9);doc.setFont("helvetica","normal");doc.setTextColor(46,125,50);
+    doc.text("Sconto: -€"+ordine.sconto,margin,y);y+=6;
+  }
+  doc.setFillColor(184,48,42);doc.rect(margin,y-4,maxW,9,"F");
+  doc.setFontSize(10);doc.setFont("helvetica","bold");doc.setTextColor(255,255,255);
+  doc.text("TOTALE",margin+2,y+1);doc.text("€"+ordine.totale,pageW-margin-20,y+1);y+=14;
   if(ordine.note){doc.setFontSize(8);doc.setFont("helvetica","normal");doc.setTextColor(100,100,100);doc.text("Note: "+ordine.note,margin,y);}
-  doc.setFontSize(7); doc.setTextColor(150);
+  doc.setFontSize(7);doc.setTextColor(150);
   doc.text("LexTrace · "+new Date().toLocaleDateString("it-IT")+" · Uso professionale riservato",margin,287);
   doc.save("Preventivo_"+(cliente.nome||"cliente").replace(/\s+/g,"_")+"_"+new Date().toISOString().slice(0,10)+".pdf");
 }
 
-// ─── MODAL EDIT REPORT ───────────────────────────────────────────────────────
-function EditReportModal({ report, onSave, onClose }) {
-  const [soggetto, setSoggetto] = useState(report.soggetto||"");
-  const [contesto, setContesto] = useState(report.contesto||"");
-  const [note, setNote]         = useState(report.note||"");
-  const [cf, setCf]             = useState(report.cf||"");
-  const [piva, setPiva]         = useState(report.piva||"");
-  const [sections, setSections] = useState(report.sections||[]);
-  const updateSec = (i,val) => { const u=[...sections]; u[i]={...u[i],content:val}; setSections(u); };
-  const inp = { width:"100%", padding:"8px 10px", border:"1px solid #ccc", borderRadius:3, fontFamily:"monospace", fontSize:"0.8rem", background:"#fafaf8", outline:"none" };
-  const lbl = { display:"block", fontSize:"0.6rem", textTransform:"uppercase", color:"#888", marginBottom:4 };
-  return (
+function EditReportModal({report,onSave,onClose}) {
+  const [soggetto,setSoggetto]=useState(report.soggetto||"");
+  const [contesto,setContesto]=useState(report.contesto||"");
+  const [note,setNote]=useState(report.note||"");
+  const [cf,setCf]=useState(report.cf||"");
+  const [piva,setPiva]=useState(report.piva||"");
+  const [sections,setSections]=useState(report.sections||[]);
+  const updSec=(i,val)=>{const u=[...sections];u[i]={...u[i],content:val};setSections(u);};
+  const inp={width:"100%",padding:"8px 10px",border:"1px solid #ccc",borderRadius:3,fontFamily:"monospace",fontSize:"0.8rem",background:"#fafaf8",outline:"none"};
+  const lbl={display:"block",fontSize:"0.6rem",textTransform:"uppercase",color:"#888",marginBottom:4};
+  return(
     <div className="overlay" onClick={onClose}>
       <div className="modal" onClick={e=>e.stopPropagation()}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20, borderBottom:"2px solid #1a1a1a", paddingBottom:12 }}>
-          <h2 style={{ fontFamily:"Georgia,serif", fontSize:"1.3rem" }}>Modifica dossier</h2>
-          <button onClick={onClose} style={{ background:"none", border:"none", fontSize:"1.2rem", cursor:"pointer" }}>✕</button>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,borderBottom:"2px solid #1a1a1a",paddingBottom:12}}>
+          <h2 style={{fontFamily:"Georgia,serif",fontSize:"1.3rem"}}>Modifica dossier</h2>
+          <button onClick={onClose} style={{background:"none",border:"none",fontSize:"1.2rem",cursor:"pointer"}}>✕</button>
         </div>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:14 }}>
-          <div><label style={lbl}>Soggetto</label><input style={inp} value={soggetto} onChange={e=>setSoggetto(e.target.value)} /></div>
-          <div><label style={lbl}>Contesto</label><input style={inp} value={contesto} onChange={e=>setContesto(e.target.value)} /></div>
-          <div><label style={lbl}>Codice Fiscale</label><input style={inp} value={cf} onChange={e=>setCf(e.target.value)} /></div>
-          <div><label style={lbl}>Partita IVA</label><input style={inp} value={piva} onChange={e=>setPiva(e.target.value)} /></div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
+          <div><label style={lbl}>Soggetto</label><input style={inp} value={soggetto} onChange={e=>setSoggetto(e.target.value)}/></div>
+          <div><label style={lbl}>Contesto</label><input style={inp} value={contesto} onChange={e=>setContesto(e.target.value)}/></div>
+          <div><label style={lbl}>Codice Fiscale</label><input style={inp} value={cf} onChange={e=>setCf(e.target.value)}/></div>
+          <div><label style={lbl}>Partita IVA</label><input style={inp} value={piva} onChange={e=>setPiva(e.target.value)}/></div>
         </div>
-        <div style={{ marginBottom:14 }}><label style={lbl}>Note</label><textarea style={{ ...inp, resize:"vertical" }} rows={2} value={note} onChange={e=>setNote(e.target.value)} /></div>
-        {sections.map((s,i) => (
-          <div key={i} style={{ marginBottom:10 }}>
-            <div style={{ background:"#2e2e2e", color:"#f5f2eb", padding:"5px 10px", borderRadius:"3px 3px 0 0", fontSize:"0.6rem", textTransform:"uppercase" }}>{s.title}</div>
-            <textarea style={{ ...inp, borderRadius:"0 0 3px 3px", borderTop:"none", resize:"vertical" }} rows={4} value={s.content} onChange={e=>updateSec(i,e.target.value)} />
+        <div style={{marginBottom:14}}><label style={lbl}>Note</label><textarea style={{...inp,resize:"vertical"}} rows={2} value={note} onChange={e=>setNote(e.target.value)}/></div>
+        {sections.map((s,i)=>(
+          <div key={i} style={{marginBottom:10}}>
+            <div style={{background:"#2e2e2e",color:"#f5f2eb",padding:"5px 10px",borderRadius:"3px 3px 0 0",fontSize:"0.6rem",textTransform:"uppercase"}}>{s.title}</div>
+            <textarea style={{...inp,borderRadius:"0 0 3px 3px",borderTop:"none",resize:"vertical"}} rows={4} value={s.content} onChange={e=>updSec(i,e.target.value)}/>
           </div>
         ))}
-        <div style={{ display:"flex", gap:10, marginTop:8 }}>
-          <button onClick={()=>onSave({...report,soggetto,contesto,note,cf,piva,sections})} style={{ flex:1, padding:12, background:"#2e7d32", color:"#fff", border:"none", borderRadius:3, cursor:"pointer", fontFamily:"monospace", fontSize:"0.75rem", textTransform:"uppercase" }}>💾 Salva</button>
-          <button onClick={onClose} style={{ flex:1, padding:12, background:"#e8e4dc", color:"#555", border:"none", borderRadius:3, cursor:"pointer", fontFamily:"monospace", fontSize:"0.75rem", textTransform:"uppercase" }}>Annulla</button>
+        <div style={{display:"flex",gap:10,marginTop:8}}>
+          <button onClick={()=>onSave({...report,soggetto,contesto,note,cf,piva,sections})} style={{flex:1,padding:12,background:"#2e7d32",color:"#fff",border:"none",borderRadius:3,cursor:"pointer",fontFamily:"monospace",fontSize:"0.75rem",textTransform:"uppercase"}}>💾 Salva</button>
+          <button onClick={onClose} style={{flex:1,padding:12,background:"#e8e4dc",color:"#555",border:"none",borderRadius:3,cursor:"pointer",fontFamily:"monospace",fontSize:"0.75rem",textTransform:"uppercase"}}>Annulla</button>
         </div>
       </div>
     </div>
   );
 }
 
-// ─── CHECKLIST ────────────────────────────────────────────────────────────────
-function Checklist({ checklist, onChange }) {
+function Checklist({checklist,onChange}) {
   const STATI=["non_verificato","in_corso","completato","non_trovato"];
-  const SL={ non_verificato:"○ Da verificare", in_corso:"◎ In corso", completato:"✓ Completato", non_trovato:"✗ Non trovato" };
-  const SC={ non_verificato:"#aaa", in_corso:"#e67e00", completato:"#2e7d32", non_trovato:"#b8302a" };
+  const SL={non_verificato:"○ Da verificare",in_corso:"◎ In corso",completato:"✓ Completato",non_trovato:"✗ Non trovato"};
+  const SC={non_verificato:"#aaa",in_corso:"#e67e00",completato:"#2e7d32",non_trovato:"#b8302a"};
   const upd=(id,f,v)=>onChange(checklist.map(i=>i.id===id?{...i,[f]:v}:i));
-  return (
+  return(
     <div>
       {checklist.map(item=>(
-        <div key={item.id} style={{ background:"#fff", border:"1px solid #e0dcd4", borderRadius:4, padding:"11px 14px", marginBottom:8 }}>
-          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:8 }}>
-            <div style={{ flex:1 }}>
-              <div style={{ fontSize:"0.78rem", color:"#1a1a1a", fontWeight:"bold" }}>{item.label}</div>
-              <div style={{ fontSize:"0.6rem", color:"#aaa", marginTop:1 }}>Fonte: {item.fonte}</div>
+        <div key={item.id} style={{background:"#fff",border:"1px solid #e0dcd4",borderRadius:4,padding:"11px 14px",marginBottom:8}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:8}}>
+            <div style={{flex:1}}>
+              <div style={{fontSize:"0.78rem",color:"#1a1a1a",fontWeight:"bold"}}>{item.label}</div>
+              <div style={{fontSize:"0.6rem",color:"#aaa",marginTop:1}}>Fonte: {item.fonte}</div>
             </div>
-            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-              <a href={item.link} target="_blank" rel="noopener noreferrer" style={{ fontSize:"0.62rem", color:"#b8302a" }}>Apri →</a>
-              <select value={item.stato} onChange={e=>upd(item.id,"stato",e.target.value)} style={{ border:"1px solid #ccc", borderRadius:3, padding:"4px 8px", fontFamily:"monospace", fontSize:"0.68rem", color:SC[item.stato], background:"#fafaf8", outline:"none" }}>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <a href={item.link} target="_blank" rel="noopener noreferrer" style={{fontSize:"0.62rem",color:"#b8302a"}}>Apri →</a>
+              <select value={item.stato} onChange={e=>upd(item.id,"stato",e.target.value)} style={{border:"1px solid #ccc",borderRadius:3,padding:"4px 8px",fontFamily:"monospace",fontSize:"0.68rem",color:SC[item.stato],background:"#fafaf8",outline:"none"}}>
                 {STATI.map(s=><option key={s} value={s}>{SL[s]}</option>)}
               </select>
             </div>
           </div>
           <input placeholder="Note risultato..." value={item.note||""} onChange={e=>upd(item.id,"note",e.target.value)}
-            style={{ width:"100%", marginTop:7, padding:"5px 10px", border:"1px solid #e0dcd4", borderRadius:3, fontFamily:"monospace", fontSize:"0.72rem", background:"#fafaf8", outline:"none" }} />
+            style={{width:"100%",marginTop:7,padding:"5px 10px",border:"1px solid #e0dcd4",borderRadius:3,fontFamily:"monospace",fontSize:"0.72rem",background:"#fafaf8",outline:"none"}}/>
         </div>
       ))}
     </div>
   );
 }
 
-// ─── MODAL CLIENTE ────────────────────────────────────────────────────────────
-function ClienteModal({ cliente, onSave, onClose }) {
-  const isNew = !cliente;
-  const [nome,     setNome]     = useState(cliente?.nome||"");
-  const [tipo,     setTipo]     = useState(cliente?.tipo||"privato");
-  const [email,    setEmail]    = useState(cliente?.email||"");
-  const [telefono, setTelefono] = useState(cliente?.telefono||"");
-  const [piva,     setPiva]     = useState(cliente?.piva||"");
-  const [cf,       setCf]       = useState(cliente?.cf||"");
-  const [note,     setNote]     = useState(cliente?.note||"");
-  const [listino,  setListino]  = useState(cliente?.listino||LISTINO_DEFAULT.map(v=>({...v})));
-  const updL = (id,p) => setListino(l=>l.map(v=>v.id===id?{...v,prezzo:parseFloat(p)||0}:v));
-  const inp = { width:"100%", padding:"8px 10px", border:"1px solid #ccc", borderRadius:3, fontFamily:"monospace", fontSize:"0.8rem", background:"#fafaf8", outline:"none" };
-  const lbl = { display:"block", fontSize:"0.6rem", textTransform:"uppercase", color:"#888", marginBottom:4 };
-  return (
+function ClienteModal({cliente,onSave,onClose}) {
+  const isNew=!cliente;
+  const [nome,setNome]=useState(cliente?.nome||"");
+  const [tipo,setTipo]=useState(cliente?.tipo||"privato");
+  const [email,setEmail]=useState(cliente?.email||"");
+  const [telefono,setTelefono]=useState(cliente?.telefono||"");
+  const [piva,setPiva]=useState(cliente?.piva||"");
+  const [cf,setCf]=useState(cliente?.cf||"");
+  const [note,setNote]=useState(cliente?.note||"");
+  const [listino,setListino]=useState(cliente?.listino||LISTINO_DEFAULT.map(v=>({...v})));
+  const updL=(id,p)=>setListino(l=>l.map(v=>v.id===id?{...v,prezzo:parseFloat(p)||0}:v));
+  const inp={width:"100%",padding:"8px 10px",border:"1px solid #ccc",borderRadius:3,fontFamily:"monospace",fontSize:"0.8rem",background:"#fafaf8",outline:"none"};
+  const lbl={display:"block",fontSize:"0.6rem",textTransform:"uppercase",color:"#888",marginBottom:4};
+  return(
     <div className="overlay" onClick={onClose}>
       <div className="modal" onClick={e=>e.stopPropagation()}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:20, borderBottom:"2px solid #1a1a1a", paddingBottom:12 }}>
-          <h2 style={{ fontFamily:"Georgia,serif", fontSize:"1.3rem" }}>{isNew?"Nuovo cliente":"Modifica cliente"}</h2>
-          <button onClick={onClose} style={{ background:"none", border:"none", fontSize:"1.2rem", cursor:"pointer" }}>✕</button>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,borderBottom:"2px solid #1a1a1a",paddingBottom:12}}>
+          <h2 style={{fontFamily:"Georgia,serif",fontSize:"1.3rem"}}>{isNew?"Nuovo cliente":"Modifica cliente"}</h2>
+          <button onClick={onClose} style={{background:"none",border:"none",fontSize:"1.2rem",cursor:"pointer"}}>✕</button>
         </div>
-        <div style={{ display:"flex", gap:8, marginBottom:16 }}>
+        <div style={{display:"flex",gap:8,marginBottom:16}}>
           {["privato","azienda"].map(t=>(
-            <button key={t} onClick={()=>setTipo(t)} style={{ flex:1, padding:"8px 0", background:tipo===t?"#1a1a1a":"#e8e4dc", color:tipo===t?"#fff":"#555", border:"none", borderRadius:3, cursor:"pointer", fontFamily:"monospace", fontSize:"0.72rem", textTransform:"uppercase" }}>
+            <button key={t} onClick={()=>setTipo(t)} style={{flex:1,padding:"8px 0",background:tipo===t?"#1a1a1a":"#e8e4dc",color:tipo===t?"#fff":"#555",border:"none",borderRadius:3,cursor:"pointer",fontFamily:"monospace",fontSize:"0.72rem",textTransform:"uppercase"}}>
               {t==="privato"?"👤 Privato":"🏢 Azienda"}
             </button>
           ))}
         </div>
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:12, marginBottom:14 }}>
-          <div style={{ gridColumn:"1/-1" }}><label style={lbl}>{tipo==="privato"?"Nome e Cognome *":"Ragione Sociale *"}</label><input style={inp} value={nome} onChange={e=>setNome(e.target.value)} placeholder={tipo==="privato"?"Mario Rossi":"Rossi Srl"} /></div>
-          <div><label style={lbl}>Email</label><input style={inp} value={email} onChange={e=>setEmail(e.target.value)} placeholder="email@esempio.it" /></div>
-          <div><label style={lbl}>Telefono</label><input style={inp} value={telefono} onChange={e=>setTelefono(e.target.value)} placeholder="+39 333 1234567" /></div>
-          {tipo==="azienda"&&<div><label style={lbl}>Partita IVA</label><input style={inp} value={piva} onChange={e=>setPiva(e.target.value)} placeholder="01234567890" /></div>}
-          <div><label style={lbl}>Codice Fiscale</label><input style={inp} value={cf} onChange={e=>setCf(e.target.value)} placeholder="RSSMRA80A01H501U" /></div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:14}}>
+          <div style={{gridColumn:"1/-1"}}><label style={lbl}>{tipo==="privato"?"Nome e Cognome *":"Ragione Sociale *"}</label><input style={inp} value={nome} onChange={e=>setNome(e.target.value)} placeholder={tipo==="privato"?"Mario Rossi":"Rossi Srl"}/></div>
+          <div><label style={lbl}>Email</label><input style={inp} value={email} onChange={e=>setEmail(e.target.value)} placeholder="email@esempio.it"/></div>
+          <div><label style={lbl}>Telefono</label><input style={inp} value={telefono} onChange={e=>setTelefono(e.target.value)} placeholder="+39 333 1234567"/></div>
+          {tipo==="azienda"&&<div><label style={lbl}>Partita IVA</label><input style={inp} value={piva} onChange={e=>setPiva(e.target.value)} placeholder="01234567890"/></div>}
+          <div><label style={lbl}>Codice Fiscale</label><input style={inp} value={cf} onChange={e=>setCf(e.target.value)} placeholder="RSSMRA80A01H501U"/></div>
         </div>
-        <div style={{ marginBottom:14 }}>
-          <div style={{ fontSize:"0.6rem", textTransform:"uppercase", color:"#aaa", marginBottom:10, paddingBottom:6, borderBottom:"1px solid #eee" }}>Listino prezzi personalizzato</div>
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:"0.6rem",textTransform:"uppercase",color:"#aaa",marginBottom:10,paddingBottom:6,borderBottom:"1px solid #eee"}}>Listino prezzi personalizzato</div>
           {listino.map(v=>(
-            <div key={v.id} style={{ display:"flex", alignItems:"center", gap:10, marginBottom:8, padding:"8px 12px", background:"#fafaf8", border:"1px solid #e8e4dc", borderRadius:3 }}>
-              <div style={{ flex:1 }}>
-                <div style={{ fontSize:"0.75rem", color:"#1a1a1a" }}>{v.nome}</div>
-                <div style={{ fontSize:"0.6rem", color:"#aaa" }}>{v.desc}</div>
+            <div key={v.id} style={{display:"flex",alignItems:"center",gap:10,marginBottom:8,padding:"8px 12px",background:"#fafaf8",border:"1px solid #e8e4dc",borderRadius:3}}>
+              <div style={{flex:1}}>
+                <div style={{fontSize:"0.75rem",color:"#1a1a1a"}}>{v.nome}</div>
+                <div style={{fontSize:"0.6rem",color:"#aaa"}}>{v.desc}</div>
               </div>
-              <div style={{ display:"flex", alignItems:"center", gap:4 }}>
-                <span style={{ fontSize:"0.75rem", color:"#555" }}>€</span>
+              <div style={{display:"flex",alignItems:"center",gap:4}}>
+                <span style={{fontSize:"0.75rem",color:"#555"}}>€</span>
                 <input type="number" value={v.prezzo} onChange={e=>updL(v.id,e.target.value)}
-                  style={{ width:70, padding:"5px 8px", border:"1px solid #ccc", borderRadius:3, fontFamily:"monospace", fontSize:"0.82rem", textAlign:"right", outline:"none" }} />
+                  style={{width:70,padding:"5px 8px",border:"1px solid #ccc",borderRadius:3,fontFamily:"monospace",fontSize:"0.82rem",textAlign:"right",outline:"none"}}/>
               </div>
             </div>
           ))}
         </div>
-        <div style={{ marginBottom:16 }}><label style={lbl}>Note interne</label><textarea style={{ ...inp, resize:"vertical" }} rows={2} value={note} onChange={e=>setNote(e.target.value)} /></div>
-        <div style={{ display:"flex", gap:10 }}>
-          <button onClick={()=>onSave({ id:cliente?.id||Date.now(), nome, tipo, email, telefono, piva, cf, note, listino, creato:cliente?.creato||new Date().toLocaleString("it-IT") })} disabled={!nome.trim()}
-            style={{ flex:1, padding:12, background:nome.trim()?"#1a1a1a":"#ccc", color:"#fff", border:"none", borderRadius:3, cursor:nome.trim()?"pointer":"not-allowed", fontFamily:"monospace", fontSize:"0.75rem", textTransform:"uppercase" }}>
+        <div style={{marginBottom:16}}><label style={lbl}>Note interne</label><textarea style={{...inp,resize:"vertical"}} rows={2} value={note} onChange={e=>setNote(e.target.value)}/></div>
+        <div style={{display:"flex",gap:10}}>
+          <button onClick={()=>onSave({id:cliente?.id||Date.now(),nome,tipo,email,telefono,piva,cf,note,listino,creato:cliente?.creato||new Date().toLocaleString("it-IT")})}
+            disabled={!nome.trim()} style={{flex:1,padding:12,background:nome.trim()?"#1a1a1a":"#ccc",color:"#fff",border:"none",borderRadius:3,cursor:nome.trim()?"pointer":"not-allowed",fontFamily:"monospace",fontSize:"0.75rem",textTransform:"uppercase"}}>
             💾 Salva cliente
           </button>
-          <button onClick={onClose} style={{ flex:1, padding:12, background:"#e8e4dc", color:"#555", border:"none", borderRadius:3, cursor:"pointer", fontFamily:"monospace", fontSize:"0.75rem", textTransform:"uppercase" }}>Annulla</button>
+          <button onClick={onClose} style={{flex:1,padding:12,background:"#e8e4dc",color:"#555",border:"none",borderRadius:3,cursor:"pointer",fontFamily:"monospace",fontSize:"0.75rem",textTransform:"uppercase"}}>Annulla</button>
         </div>
       </div>
     </div>
   );
 }
 
-// ─── MODAL ORDINE CON PERSONALIZZAZIONE DOSSIER ───────────────────────────────
-function OrdineModal({ cliente, onSave, onClose }) {
-  const [voci,   setVoci]   = useState([{ id:Date.now(), servizio:"", soggetto:"", prezzo:0, cfSoggetto:"" }]);
-  const [note,   setNote]   = useState("");
-  const [stato,  setStato]  = useState("in_attesa");
-  const [sconto, setSconto] = useState(0);
-
-  // Personalizzazione dossier per ogni voce
-  const DOSSIER_OPZIONI = [
-    { id:"web",        label:"Ricerca web e notizie" },
-    { id:"registro",   label:"Registro Imprese / CCIAA" },
-    { id:"pra",        label:"Veicoli intestati (PRA)" },
-    { id:"catasto",    label:"Immobili (Catasto)" },
-    { id:"ipoteche",   label:"Ipoteche e vincoli" },
-    { id:"inps",       label:"Datore lavoro / Reddito (INPS)" },
-    { id:"banca",      label:"Conti correnti bancari" },
-    { id:"telefono",   label:"Numeri di telefono" },
-    { id:"linkedin",   label:"Profilo LinkedIn" },
-    { id:"fallimenti", label:"Fallimenti / Procedure concorsuali" },
-  ];
-
-  const [dossierOpz, setDossierOpz] = useState(DOSSIER_OPZIONI.map(o=>({...o,incluso:true})));
-  const [mostraDossier, setMostraDossier] = useState(false);
-
-  const addVoce    = () => setVoci(v=>[...v,{id:Date.now(),servizio:"",soggetto:"",prezzo:0,cfSoggetto:""}]);
-  const removeVoce = (id) => setVoci(v=>v.filter(x=>x.id!==id));
-  const updVoce    = (id,f,v) => setVoci(voci=>voci.map(x=>x.id===id?{...x,[f]:v}:x));
-  const toggleOpz  = (id) => setDossierOpz(d=>d.map(o=>o.id===id?{...o,incluso:!o.incluso}:o));
-
-  const subtotale = voci.reduce((acc,v)=>acc+(parseFloat(v.prezzo)||0),0);
-  const scontoVal = parseFloat(sconto)||0;
-  const totale    = Math.max(0, subtotale - scontoVal).toFixed(2);
-
-  const inp = { width:"100%", padding:"7px 9px", border:"1px solid #ccc", borderRadius:3, fontFamily:"monospace", fontSize:"0.78rem", background:"#fafaf8", outline:"none" };
-
-  return (
+function OrdineModal({cliente,onSave,onClose}) {
+  const [voci,setVoci]=useState([{id:Date.now(),servizio:"",soggetto:"",prezzo:0,cfSoggetto:""}]);
+  const [note,setNote]=useState("");
+  const [stato,setStato]=useState("in_attesa");
+  const [sconto,setSconto]=useState(0);
+  const [dossierOpz,setDossierOpz]=useState(DOSSIER_OPZIONI.map(o=>({...o,incluso:true})));
+  const [mostraDossier,setMostraDossier]=useState(false);
+  const addVoce=()=>setVoci(v=>[...v,{id:Date.now(),servizio:"",soggetto:"",prezzo:0,cfSoggetto:""}]);
+  const removeVoce=id=>setVoci(v=>v.filter(x=>x.id!==id));
+  const updVoce=(id,f,v)=>setVoci(voci=>voci.map(x=>x.id===id?{...x,[f]:v}:x));
+  const toggleOpz=id=>setDossierOpz(d=>d.map(o=>o.id===id?{...o,incluso:!o.incluso}:o));
+  const subtotale=voci.reduce((acc,v)=>acc+(parseFloat(v.prezzo)||0),0);
+  const scontoVal=parseFloat(sconto)||0;
+  const totale=Math.max(0,subtotale-scontoVal).toFixed(2);
+  const inp={width:"100%",padding:"7px 9px",border:"1px solid #ccc",borderRadius:3,fontFamily:"monospace",fontSize:"0.78rem",background:"#fafaf8",outline:"none"};
+  return(
     <div className="overlay" onClick={onClose}>
-      <div className="modal" style={{ maxWidth:720 }} onClick={e=>e.stopPropagation()}>
-        <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:16, borderBottom:"2px solid #1a1a1a", paddingBottom:12 }}>
+      <div className="modal" style={{maxWidth:720}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,borderBottom:"2px solid #1a1a1a",paddingBottom:12}}>
           <div>
-            <h2 style={{ fontFamily:"Georgia,serif", fontSize:"1.3rem" }}>Nuovo ordine</h2>
-            <div style={{ fontSize:"0.7rem", color:"#888", marginTop:2 }}>Cliente: <strong>{cliente.nome}</strong></div>
+            <h2 style={{fontFamily:"Georgia,serif",fontSize:"1.3rem"}}>Nuovo ordine</h2>
+            <div style={{fontSize:"0.7rem",color:"#888",marginTop:2}}>Cliente: <strong>{cliente.nome}</strong></div>
           </div>
-          <button onClick={onClose} style={{ background:"none", border:"none", fontSize:"1.2rem", cursor:"pointer" }}>✕</button>
+          <button onClick={onClose} style={{background:"none",border:"none",fontSize:"1.2rem",cursor:"pointer"}}>✕</button>
         </div>
-
-        {/* Aggiungi dal listino */}
-        <div style={{ marginBottom:16 }}>
-          <div style={{ fontSize:"0.6rem", textTransform:"uppercase", color:"#aaa", marginBottom:8 }}>Aggiungi dal listino prezzi</div>
-          <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+        <div style={{marginBottom:16}}>
+          <div style={{fontSize:"0.6rem",textTransform:"uppercase",color:"#aaa",marginBottom:8}}>Aggiungi dal listino</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
             {(cliente.listino||LISTINO_DEFAULT).map(v=>(
               <button key={v.id} onClick={()=>setVoci(voci=>[...voci,{id:Date.now(),servizio:v.nome,soggetto:"",prezzo:v.prezzo,cfSoggetto:""}])}
-                style={{ padding:"6px 12px", background:"#f0ede6", border:"1px solid #d8d4cc", borderRadius:3, cursor:"pointer", fontFamily:"monospace", fontSize:"0.68rem" }}>
+                style={{padding:"6px 12px",background:"#f0ede6",border:"1px solid #d8d4cc",borderRadius:3,cursor:"pointer",fontFamily:"monospace",fontSize:"0.68rem"}}>
                 + {v.nome} · <strong>€{v.prezzo}</strong>
               </button>
             ))}
           </div>
         </div>
-
-        {/* Voci ordine */}
-        <div style={{ marginBottom:14 }}>
-          <div style={{ fontSize:"0.6rem", textTransform:"uppercase", color:"#aaa", marginBottom:8 }}>Voci ordine</div>
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:"0.6rem",textTransform:"uppercase",color:"#aaa",marginBottom:8}}>Voci ordine</div>
           {voci.map((v,i)=>(
-            <div key={v.id} style={{ background:"#fafaf8", border:"1px solid #e8e4dc", borderRadius:4, padding:"10px 12px", marginBottom:8 }}>
-              <div style={{ display:"grid", gridTemplateColumns:"2fr 2fr 1fr auto", gap:6, marginBottom:6 }}>
-                <input style={inp} placeholder="Tipo servizio" value={v.servizio} onChange={e=>updVoce(v.id,"servizio",e.target.value)} />
-                <input style={inp} placeholder="Soggetto da investigare" value={v.soggetto} onChange={e=>updVoce(v.id,"soggetto",e.target.value)} />
-                <input style={{ ...inp, textAlign:"right" }} type="number" placeholder="€" value={v.prezzo} onChange={e=>updVoce(v.id,"prezzo",e.target.value)} />
-                {voci.length>1&&<button onClick={()=>removeVoce(v.id)} style={{ background:"none", border:"1px solid #ddd", borderRadius:3, cursor:"pointer", color:"#888" }}>✕</button>}
+            <div key={v.id} style={{background:"#fafaf8",border:"1px solid #e8e4dc",borderRadius:4,padding:"10px 12px",marginBottom:8}}>
+              <div style={{display:"grid",gridTemplateColumns:"2fr 2fr 1fr auto",gap:6,marginBottom:6}}>
+                <input style={inp} placeholder="Tipo servizio" value={v.servizio} onChange={e=>updVoce(v.id,"servizio",e.target.value)}/>
+                <input style={inp} placeholder="Soggetto da investigare" value={v.soggetto} onChange={e=>updVoce(v.id,"soggetto",e.target.value)}/>
+                <input style={{...inp,textAlign:"right"}} type="number" placeholder="€" value={v.prezzo} onChange={e=>updVoce(v.id,"prezzo",e.target.value)}/>
+                {voci.length>1&&<button onClick={()=>removeVoce(v.id)} style={{background:"none",border:"1px solid #ddd",borderRadius:3,cursor:"pointer",color:"#888"}}>✕</button>}
               </div>
-              <input style={{ ...inp, fontSize:"0.72rem" }} placeholder="CF / P.IVA soggetto (opzionale)" value={v.cfSoggetto} onChange={e=>updVoce(v.id,"cfSoggetto",e.target.value)} />
+              <input style={{...inp,fontSize:"0.72rem"}} placeholder="CF / P.IVA soggetto (opzionale)" value={v.cfSoggetto} onChange={e=>updVoce(v.id,"cfSoggetto",e.target.value)}/>
             </div>
           ))}
-          <button onClick={addVoce} style={{ padding:"6px 14px", background:"none", border:"1px dashed #ccc", borderRadius:3, cursor:"pointer", fontFamily:"monospace", fontSize:"0.7rem", color:"#888" }}>+ Aggiungi voce</button>
+          <button onClick={addVoce} style={{padding:"6px 14px",background:"none",border:"1px dashed #ccc",borderRadius:3,cursor:"pointer",fontFamily:"monospace",fontSize:"0.7rem",color:"#888"}}>+ Aggiungi voce</button>
         </div>
-
-        {/* Personalizzazione contenuto dossier */}
-        <div style={{ marginBottom:14 }}>
-          <button onClick={()=>setMostraDossier(!mostraDossier)} style={{ width:"100%", padding:"9px 14px", background:"#f0ede6", border:"1px solid #d8d4cc", borderRadius:3, cursor:"pointer", fontFamily:"monospace", fontSize:"0.72rem", textTransform:"uppercase", textAlign:"left", display:"flex", justifyContent:"space-between" }}>
-            <span>📋 Personalizza contenuto dossier</span>
-            <span>{mostraDossier?"▲":"▼"}</span>
+        <div style={{marginBottom:14}}>
+          <button onClick={()=>setMostraDossier(!mostraDossier)} style={{width:"100%",padding:"9px 14px",background:"#f0ede6",border:"1px solid #d8d4cc",borderRadius:3,cursor:"pointer",fontFamily:"monospace",fontSize:"0.72rem",textTransform:"uppercase",textAlign:"left",display:"flex",justifyContent:"space-between"}}>
+            <span>📋 Personalizza contenuto dossier</span><span>{mostraDossier?"▲":"▼"}</span>
           </button>
-          {mostraDossier && (
-            <div style={{ border:"1px solid #d8d4cc", borderTop:"none", borderRadius:"0 0 3px 3px", padding:14 }}>
-              <div style={{ fontSize:"0.62rem", color:"#888", marginBottom:10 }}>Seleziona le sezioni da includere nel dossier per questo ordine:</div>
-              <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:6 }}>
+          {mostraDossier&&(
+            <div style={{border:"1px solid #d8d4cc",borderTop:"none",borderRadius:"0 0 3px 3px",padding:14}}>
+              <div style={{fontSize:"0.62rem",color:"#888",marginBottom:10}}>Sezioni da includere nel dossier:</div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:6}}>
                 {dossierOpz.map(o=>(
-                  <div key={o.id} onClick={()=>toggleOpz(o.id)} style={{ display:"flex", alignItems:"center", gap:8, padding:"7px 10px", border:"1px solid", borderRadius:3, cursor:"pointer", borderColor:o.incluso?"#2e7d32":"#ddd", background:o.incluso?"#e8f5e9":"#fafaf8" }}>
-                    <div style={{ width:14, height:14, borderRadius:2, border:"1.5px solid", borderColor:o.incluso?"#2e7d32":"#ccc", background:o.incluso?"#2e7d32":"transparent", display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
-                      {o.incluso&&<span style={{ color:"#fff", fontSize:"0.6rem", lineHeight:1 }}>✓</span>}
+                  <div key={o.id} onClick={()=>toggleOpz(o.id)} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",border:"1px solid",borderRadius:3,cursor:"pointer",borderColor:o.incluso?"#2e7d32":"#ddd",background:o.incluso?"#e8f5e9":"#fafaf8"}}>
+                    <div style={{width:14,height:14,borderRadius:2,border:"1.5px solid",borderColor:o.incluso?"#2e7d32":"#ccc",background:o.incluso?"#2e7d32":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                      {o.incluso&&<span style={{color:"#fff",fontSize:"0.6rem",lineHeight:1}}>✓</span>}
                     </div>
-                    <span style={{ fontSize:"0.72rem", color:o.incluso?"#1a1a1a":"#888" }}>{o.label}</span>
+                    <span style={{fontSize:"0.72rem",color:o.incluso?"#1a1a1a":"#888"}}>{o.label}</span>
                   </div>
                 ))}
               </div>
-              <div style={{ marginTop:10, fontSize:"0.65rem", color:"#aaa" }}>
-                {dossierOpz.filter(o=>o.incluso).length} di {dossierOpz.length} sezioni incluse
-              </div>
+              <div style={{marginTop:10,fontSize:"0.65rem",color:"#aaa"}}>{dossierOpz.filter(o=>o.incluso).length} di {dossierOpz.length} sezioni incluse</div>
             </div>
           )}
         </div>
-
-        {/* Sconto, stato, note */}
-        <div style={{ display:"grid", gridTemplateColumns:"1fr 1fr 1fr", gap:12, marginBottom:14 }}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:14}}>
           <div>
-            <div style={{ fontSize:"0.6rem", textTransform:"uppercase", color:"#aaa", marginBottom:4 }}>Sconto (€)</div>
-            <input style={inp} type="number" placeholder="0" value={sconto} onChange={e=>setSconto(e.target.value)} />
+            <div style={{fontSize:"0.6rem",textTransform:"uppercase",color:"#aaa",marginBottom:4}}>Sconto (€)</div>
+            <input style={inp} type="number" placeholder="0" value={sconto} onChange={e=>setSconto(e.target.value)}/>
           </div>
           <div>
-            <div style={{ fontSize:"0.6rem", textTransform:"uppercase", color:"#aaa", marginBottom:4 }}>Stato pagamento</div>
-            <select value={stato} onChange={e=>setStato(e.target.value)} style={{ ...inp, color:STATI_PAG_COLOR[stato] }}>
+            <div style={{fontSize:"0.6rem",textTransform:"uppercase",color:"#aaa",marginBottom:4}}>Stato pagamento</div>
+            <select value={stato} onChange={e=>setStato(e.target.value)} style={{...inp,color:STATI_PAG_COLOR[stato]}}>
               {STATI_PAG.map(s=><option key={s} value={s}>{STATI_PAG_LABEL[s]}</option>)}
             </select>
           </div>
           <div>
-            <div style={{ fontSize:"0.6rem", textTransform:"uppercase", color:"#aaa", marginBottom:4 }}>Note ordine</div>
-            <input style={inp} value={note} onChange={e=>setNote(e.target.value)} placeholder="Note..." />
+            <div style={{fontSize:"0.6rem",textTransform:"uppercase",color:"#aaa",marginBottom:4}}>Note</div>
+            <input style={inp} value={note} onChange={e=>setNote(e.target.value)} placeholder="Note..."/>
           </div>
         </div>
-
-        {/* Riepilogo prezzi */}
-        <div style={{ background:"#f5f2eb", border:"1px solid #d8d4cc", borderRadius:3, padding:"10px 14px", marginBottom:16 }}>
-          <div style={{ display:"flex", justifyContent:"space-between", fontSize:"0.78rem", color:"#555", marginBottom:4 }}>
+        <div style={{background:"#f5f2eb",border:"1px solid #d8d4cc",borderRadius:3,padding:"10px 14px",marginBottom:16}}>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:"0.78rem",color:"#555",marginBottom:4}}>
             <span>Subtotale</span><span>€{subtotale.toFixed(2)}</span>
           </div>
-          {scontoVal>0&&<div style={{ display:"flex", justifyContent:"space-between", fontSize:"0.78rem", color:"#2e7d32", marginBottom:4 }}>
-            <span>Sconto</span><span>- €{scontoVal.toFixed(2)}</span>
+          {scontoVal>0&&<div style={{display:"flex",justifyContent:"space-between",fontSize:"0.78rem",color:"#2e7d32",marginBottom:4}}>
+            <span>Sconto</span><span>-€{scontoVal.toFixed(2)}</span>
           </div>}
-          <div style={{ display:"flex", justifyContent:"space-between", fontSize:"1rem", fontWeight:"bold", color:"#1a1a1a", borderTop:"1px solid #ccc", paddingTop:6, marginTop:4 }}>
+          <div style={{display:"flex",justifyContent:"space-between",fontSize:"1rem",fontWeight:"bold",color:"#1a1a1a",borderTop:"1px solid #ccc",paddingTop:6,marginTop:4}}>
             <span>TOTALE</span><span>€{totale}</span>
           </div>
         </div>
-
-        <div style={{ display:"flex", gap:10 }}>
-          <button onClick={()=>onSave({ id:Date.now(), data:new Date().toLocaleString("it-IT"), voci, totale:parseFloat(totale), sconto:scontoVal, stato, note, dossierPersonalizzato:dossierOpz })}
-            style={{ flex:1, padding:12, background:"#b8302a", color:"#fff", border:"none", borderRadius:3, cursor:"pointer", fontFamily:"monospace", fontSize:"0.75rem", textTransform:"uppercase" }}>
+        <div style={{display:"flex",gap:10}}>
+          <button onClick={()=>onSave({id:Date.now(),data:new Date().toLocaleString("it-IT"),voci,totale:parseFloat(totale),sconto:scontoVal,stato,note,dossierPersonalizzato:dossierOpz})}
+            style={{flex:1,padding:12,background:"#b8302a",color:"#fff",border:"none",borderRadius:3,cursor:"pointer",fontFamily:"monospace",fontSize:"0.75rem",textTransform:"uppercase"}}>
             📋 Crea ordine
           </button>
-          <button onClick={onClose} style={{ flex:1, padding:12, background:"#e8e4dc", color:"#555", border:"none", borderRadius:3, cursor:"pointer", fontFamily:"monospace", fontSize:"0.75rem", textTransform:"uppercase" }}>Annulla</button>
+          <button onClick={onClose} style={{flex:1,padding:12,background:"#e8e4dc",color:"#555",border:"none",borderRadius:3,cursor:"pointer",fontFamily:"monospace",fontSize:"0.75rem",textTransform:"uppercase"}}>Annulla</button>
         </div>
       </div>
     </div>
   );
 }
 
-// ─── APP ──────────────────────────────────────────────────────────────────────
 function App() {
-  const [tab,       setTab]       = useState("persona");
-  const [nome,      setNome]      = useState("");
-  const [cognome,   setCognome]   = useState("");
-  const [cf,        setCf]        = useState("");
-  const [citta,     setCitta]     = useState("");
-  const [ragione,   setRagione]   = useState("");
-  const [piva,      setPiva]      = useState("");
-  const [sede,      setSede]      = useState("");
-  const [contesto,  setContesto]  = useState("");
-  const [note,      setNote]      = useState("");
-  const [sources,   setSources]   = useState(["cciaa","inipec","linkedin","gazzetta","tribunali"]);
-  const [view,      setView]      = useState("form");
-  const [subview,   setSubview]   = useState("dossier");
-  const [reports,   setReports]   = useState([]);
-  const [clienti,   setClienti]   = useState([]);
-  const [saving,    setSaving]    = useState(false);
-  const [loading,   setLoading]   = useState(false);
-  const [msg,       setMsg]       = useState("");
-  const [searchR,   setSearchR]   = useState("");
-  const [searchC,   setSearchC]   = useState("");
-  const [editRep,   setEditRep]   = useState(null);
-  const [delConf,   setDelConf]   = useState(null);
-  const [delClConf, setDelClConf] = useState(null);
-  const [editCl,    setEditCl]    = useState(null);
-  const [newCl,     setNewCl]     = useState(false);
-  const [ordineFor, setOrdineFor] = useState(null);
-  const [expandCl,  setExpandCl]  = useState(null);
-  const [checklist, setChecklist] = useState(CHECKLIST_ITEMS.map(i=>({...i,stato:"non_verificato",note:""})));
+  const [tab,setTab]=useState("persona");
+  const [nome,setNome]=useState("");
+  const [cognome,setCognome]=useState("");
+  const [cf,setCf]=useState("");
+  const [citta,setCitta]=useState("");
+  const [ragione,setRagione]=useState("");
+  const [piva,setPiva]=useState("");
+  const [sede,setSede]=useState("");
+  const [contesto,setContesto]=useState("");
+  const [note,setNote]=useState("");
+  const [sources,setSources]=useState(["cciaa","inipec","linkedin","gazzetta","tribunali"]);
+  const [view,setView]=useState("form");
+  const [subview,setSubview]=useState("dossier");
+  const [reports,setReports]=useState([]);
+  const [clienti,setClienti]=useState([]);
+  const [saving,setSaving]=useState(false);
+  const [loading,setLoading]=useState(false);
+  const [msg,setMsg]=useState("");
+  const [searchR,setSearchR]=useState("");
+  const [searchC,setSearchC]=useState("");
+  const [editRep,setEditRep]=useState(null);
+  const [delConf,setDelConf]=useState(null);
+  const [delClConf,setDelClConf]=useState(null);
+  const [editCl,setEditCl]=useState(null);
+  const [newCl,setNewCl]=useState(false);
+  const [ordineFor,setOrdineFor]=useState(null);
+  const [expandCl,setExpandCl]=useState(null);
+  const [checklist,setChecklist]=useState(CHECKLIST_ITEMS.map(i=>({...i,stato:"non_verificato",note:""})));
 
-  useEffect(() => {
+  useEffect(()=>{
     if(view==="archivio"){setLoading(true);loadReports().then(r=>{setReports(r);setLoading(false)});}
-    if(view==="clienti") {setLoading(true);loadClienti().then(c=>{setClienti(c);setLoading(false)});}
-  }, [view]);
+    if(view==="clienti"){setLoading(true);loadClienti().then(c=>{setClienti(c);setLoading(false)});}
+  },[view]);
 
-  const toggleSrc = id=>setSources(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
-  const data      = {tab,nome,cognome,cf,citta,ragione,piva,sede,contesto,note,sources};
-  const soggetto  = tab==="persona"?(nome+" "+cognome).trim():ragione;
-  const canSearch = tab==="persona"?nome.trim().length>0:ragione.trim().length>0;
-  const links     = buildLinks(data);
-  const sections  = generateSections(data);
+  const toggleSrc=id=>setSources(s=>s.includes(id)?s.filter(x=>x!==id):[...s,id]);
+  const data={tab,nome,cognome,cf,citta,ragione,piva,sede,contesto,note,sources};
+  const soggetto=tab==="persona"?(nome+" "+cognome).trim():ragione;
+  const canSearch=tab==="persona"?nome.trim().length>0:ragione.trim().length>0;
+  const links=buildLinks(data);
+  const sections=generateSections(data);
 
-  const filtR = reports.filter(r=>{if(!searchR.trim())return true;const q=searchR.toLowerCase();return(r.soggetto||"").toLowerCase().includes(q)||(r.cf||"").toLowerCase().includes(q)||(r.piva||"").toLowerCase().includes(q)||(r.contesto||"").toLowerCase().includes(q);});
-  const filtC = clienti.filter(c=>{if(!searchC.trim())return true;const q=searchC.toLowerCase();return(c.nome||"").toLowerCase().includes(q)||(c.email||"").toLowerCase().includes(q)||(c.piva||"").toLowerCase().includes(q)||(c.cf||"").toLowerCase().includes(q);});
+  const filtR=reports.filter(r=>{if(!searchR.trim())return true;const q=searchR.toLowerCase();return(r.soggetto||"").toLowerCase().includes(q)||(r.cf||"").toLowerCase().includes(q)||(r.piva||"").toLowerCase().includes(q)||(r.contesto||"").toLowerCase().includes(q);});
+  const filtC=clienti.filter(c=>{if(!searchC.trim())return true;const q=searchC.toLowerCase();return(c.nome||"").toLowerCase().includes(q)||(c.email||"").toLowerCase().includes(q)||(c.piva||"").toLowerCase().includes(q)||(c.cf||"").toLowerCase().includes(q);});
 
-  const showMsg = m=>{setMsg(m);setTimeout(()=>setMsg(""),3000);};
+  const showMsg=m=>{setMsg(m);setTimeout(()=>setMsg(""),4000);};
 
-  const handleSave = async()=>{
+  const handleSave=async()=>{
     setSaving(true);
+    showMsg("⏳ Salvataggio in corso...");
     const report={id:Date.now(),data:new Date().toLocaleString("it-IT"),soggetto,tab,contesto:contesto||"Recupero crediti",note,cf,piva,sections,links,checklist};
     const ex=await loadReports();
     const ok=await saveReports([report,...ex]);
-    ok?showMsg("✅ Salvato in archivio!"):showMsg("❌ Errore salvataggio");
+    ok?showMsg("✅ Salvato in archivio!"):showMsg("❌ Errore salvataggio. Controlla la connessione.");
     setSaving(false);
   };
 
@@ -623,11 +638,9 @@ function App() {
   const totCl=c=>(c.ordini||[]).reduce((a,o)=>a+(o.totale||0),0);
   const arrCl=c=>(c.ordini||[]).filter(o=>o.stato==="arretrato").reduce((a,o)=>a+(o.totale||0),0);
 
-  return (
+  return(
     <div style={{background:"#f5f2eb",minHeight:"100vh",padding:"28px 20px"}}>
       <div style={{maxWidth:860,margin:"0 auto"}}>
-
-        {/* Header */}
         <div style={{borderBottom:"2px solid #1a1a1a",paddingBottom:16,marginBottom:24}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:10}}>
             <div>
@@ -642,9 +655,8 @@ function App() {
           </div>
         </div>
 
-        {msg&&<div style={{marginBottom:16,padding:"10px 16px",background:msg.includes("✅")||msg.includes("🗑")?"#e8f5e9":"#ffebee",borderRadius:3,fontSize:"0.8rem",color:msg.includes("✅")||msg.includes("🗑")?"#2e7d32":"#b8302a"}}>{msg}</div>}
+        {msg&&<div style={{marginBottom:16,padding:"10px 16px",background:msg.includes("✅")||msg.includes("🗑")?"#e8f5e9":msg.includes("⏳")?"#fff8e1":"#ffebee",borderRadius:3,fontSize:"0.8rem",color:msg.includes("✅")||msg.includes("🗑")?"#2e7d32":msg.includes("⏳")?"#e67e00":"#b8302a"}}>{msg}</div>}
 
-        {/* ── RICERCA ── */}
         {view==="form"&&(
           <>
             <div style={{display:"flex",borderBottom:"1px solid #ccc",marginBottom:20}}>
@@ -656,28 +668,28 @@ function App() {
               <div style={{fontSize:"0.6rem",textTransform:"uppercase",color:"#aaa",letterSpacing:"0.1em",marginBottom:16,paddingBottom:8,borderBottom:"1px solid #eee"}}>Dati soggetto</div>
               {tab==="persona"?(
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                  <div><label style={lbl}>Nome *</label><input style={inp} value={nome} onChange={e=>setNome(e.target.value)} placeholder="Mario" /></div>
-                  <div><label style={lbl}>Cognome</label><input style={inp} value={cognome} onChange={e=>setCognome(e.target.value)} placeholder="Rossi" /></div>
-                  <div><label style={lbl}>Codice Fiscale</label><input style={inp} value={cf} onChange={e=>setCf(e.target.value)} placeholder="RSSMRA80A01H501U" /></div>
-                  <div><label style={lbl}>Città</label><input style={inp} value={citta} onChange={e=>setCitta(e.target.value)} placeholder="Milano" /></div>
-                  <div style={{gridColumn:"1/-1"}}><label style={lbl}>Contesto</label><input style={inp} value={contesto} onChange={e=>setContesto(e.target.value)} placeholder="es. recupero credito €15.000" /></div>
+                  <div><label style={lbl}>Nome *</label><input style={inp} value={nome} onChange={e=>setNome(e.target.value)} placeholder="Mario"/></div>
+                  <div><label style={lbl}>Cognome</label><input style={inp} value={cognome} onChange={e=>setCognome(e.target.value)} placeholder="Rossi"/></div>
+                  <div><label style={lbl}>Codice Fiscale</label><input style={inp} value={cf} onChange={e=>setCf(e.target.value)} placeholder="RSSMRA80A01H501U"/></div>
+                  <div><label style={lbl}>Città</label><input style={inp} value={citta} onChange={e=>setCitta(e.target.value)} placeholder="Milano"/></div>
+                  <div style={{gridColumn:"1/-1"}}><label style={lbl}>Contesto</label><input style={inp} value={contesto} onChange={e=>setContesto(e.target.value)} placeholder="es. recupero credito €15.000"/></div>
                 </div>
               ):(
                 <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
-                  <div><label style={lbl}>Ragione Sociale *</label><input style={inp} value={ragione} onChange={e=>setRagione(e.target.value)} placeholder="Rossi Srl" /></div>
-                  <div><label style={lbl}>Partita IVA</label><input style={inp} value={piva} onChange={e=>setPiva(e.target.value)} placeholder="01234567890" /></div>
-                  <div><label style={lbl}>Sede</label><input style={inp} value={sede} onChange={e=>setSede(e.target.value)} placeholder="Via Roma 1, Milano" /></div>
-                  <div><label style={lbl}>Contesto</label><input style={inp} value={contesto} onChange={e=>setContesto(e.target.value)} placeholder="es. recupero credito €50.000" /></div>
+                  <div><label style={lbl}>Ragione Sociale *</label><input style={inp} value={ragione} onChange={e=>setRagione(e.target.value)} placeholder="Rossi Srl"/></div>
+                  <div><label style={lbl}>Partita IVA</label><input style={inp} value={piva} onChange={e=>setPiva(e.target.value)} placeholder="01234567890"/></div>
+                  <div><label style={lbl}>Sede</label><input style={inp} value={sede} onChange={e=>setSede(e.target.value)} placeholder="Via Roma 1, Milano"/></div>
+                  <div><label style={lbl}>Contesto</label><input style={inp} value={contesto} onChange={e=>setContesto(e.target.value)} placeholder="es. recupero credito €50.000"/></div>
                 </div>
               )}
-              <div style={{marginTop:12}}><label style={lbl}>Note personali</label><textarea style={{...inp,resize:"vertical"}} rows={2} value={note} onChange={e=>setNote(e.target.value)} placeholder="Informazioni aggiuntive..." /></div>
+              <div style={{marginTop:12}}><label style={lbl}>Note personali</label><textarea style={{...inp,resize:"vertical"}} rows={2} value={note} onChange={e=>setNote(e.target.value)} placeholder="Informazioni aggiuntive..."/></div>
             </div>
             <div style={{background:"#fff",border:"1px solid #d8d4cc",borderRadius:4,padding:22,marginBottom:16}}>
               <div style={{fontSize:"0.6rem",textTransform:"uppercase",color:"#aaa",letterSpacing:"0.1em",marginBottom:14,paddingBottom:8,borderBottom:"1px solid #eee"}}>Fonti</div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8}}>
                 {SOURCES.map(s=>(
                   <div key={s.id} onClick={()=>toggleSrc(s.id)} style={{display:"flex",alignItems:"center",gap:10,padding:"9px 14px",border:"1px solid",borderRadius:3,cursor:"pointer",borderColor:sources.includes(s.id)?"#b8302a":"#ddd",background:sources.includes(s.id)?"#fff5f5":"#fafaf8"}}>
-                    <div style={{width:9,height:9,borderRadius:2,flexShrink:0,border:"1.5px solid",borderColor:sources.includes(s.id)?"#b8302a":"#ccc",background:sources.includes(s.id)?"#b8302a":"transparent"}} />
+                    <div style={{width:9,height:9,borderRadius:2,flexShrink:0,border:"1.5px solid",borderColor:sources.includes(s.id)?"#b8302a":"#ccc",background:sources.includes(s.id)?"#b8302a":"transparent"}}/>
                     <div><div style={{fontSize:"0.75rem",color:"#1a1a1a"}}>{s.name}</div><div style={{fontSize:"0.6rem",color:"#aaa"}}>{s.cost}</div></div>
                   </div>
                 ))}
@@ -728,7 +740,7 @@ function App() {
                 )}
                 {subview==="checklist"&&(
                   <div>
-                    <Checklist checklist={checklist} onChange={setChecklist} />
+                    <Checklist checklist={checklist} onChange={setChecklist}/>
                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginTop:12}}>
                       <button onClick={handleSave} disabled={saving} style={btnS("#2e7d32",saving)}>{saving?"Salvataggio...":"💾 Salva in archivio"}</button>
                       <button onClick={()=>exportPDF({soggetto,sections,checklist,note})} style={btnS("#b8302a",false)}>📥 Scarica PDF</button>
@@ -740,15 +752,14 @@ function App() {
           </>
         )}
 
-        {/* ── ARCHIVIO ── */}
         {view==="archivio"&&(
           <div>
             <div style={{position:"relative",marginBottom:20}}>
-              <input style={{...inp,paddingLeft:36}} value={searchR} onChange={e=>setSearchR(e.target.value)} placeholder="Cerca per nome, CF, P.IVA, contesto..." />
+              <input style={{...inp,paddingLeft:36}} value={searchR} onChange={e=>setSearchR(e.target.value)} placeholder="Cerca per nome, CF, P.IVA, contesto..."/>
               <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"#aaa"}}>🔍</span>
               {searchR&&<span onClick={()=>setSearchR("")} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",cursor:"pointer",color:"#aaa"}}>✕</span>}
             </div>
-            {loading&&<div style={{color:"#888",padding:20}}>Caricamento...</div>}
+            {loading&&<div style={{color:"#888",padding:20,textAlign:"center"}}>⏳ Caricamento dall'archivio...</div>}
             {!loading&&filtR.length===0&&<div style={{background:"#fff",border:"1px solid #d8d4cc",borderRadius:4,padding:48,textAlign:"center",color:"#bbb",fontSize:"0.75rem",textTransform:"uppercase"}}>{searchR?`Nessun risultato per "${searchR}"`:"Nessun report salvato"}</div>}
             {!loading&&filtR.map(r=>(
               <div key={r.id} style={{background:"#fff",border:"1px solid #d8d4cc",borderRadius:4,marginBottom:12,overflow:"hidden"}}>
@@ -785,18 +796,17 @@ function App() {
           </div>
         )}
 
-        {/* ── CLIENTI ── */}
         {view==="clienti"&&(
           <div>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,gap:12,flexWrap:"wrap"}}>
               <div style={{position:"relative",flex:1,minWidth:200}}>
-                <input style={{...inp,paddingLeft:36}} value={searchC} onChange={e=>setSearchC(e.target.value)} placeholder="Cerca cliente per nome, email, CF, P.IVA..." />
+                <input style={{...inp,paddingLeft:36}} value={searchC} onChange={e=>setSearchC(e.target.value)} placeholder="Cerca per nome, email, CF, P.IVA..."/>
                 <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"#aaa"}}>🔍</span>
                 {searchC&&<span onClick={()=>setSearchC("")} style={{position:"absolute",right:12,top:"50%",transform:"translateY(-50%)",cursor:"pointer",color:"#aaa"}}>✕</span>}
               </div>
               <button onClick={()=>setNewCl(true)} style={{padding:"9px 20px",background:"#1a1a1a",color:"#fff",border:"none",borderRadius:3,cursor:"pointer",fontFamily:"monospace",fontSize:"0.72rem",textTransform:"uppercase",whiteSpace:"nowrap"}}>+ Nuovo cliente</button>
             </div>
-            {loading&&<div style={{color:"#888",padding:20}}>Caricamento...</div>}
+            {loading&&<div style={{color:"#888",padding:20,textAlign:"center"}}>⏳ Caricamento clienti...</div>}
             {!loading&&filtC.length===0&&<div style={{background:"#fff",border:"1px solid #d8d4cc",borderRadius:4,padding:48,textAlign:"center",color:"#bbb",fontSize:"0.75rem",textTransform:"uppercase"}}>{searchC?`Nessun cliente per "${searchC}"`:"Nessun cliente. Clicca + Nuovo cliente."}</div>}
             {!loading&&filtC.map(c=>(
               <div key={c.id} style={{background:"#fff",border:"1px solid #d8d4cc",borderRadius:4,marginBottom:12,overflow:"hidden"}}>
@@ -827,7 +837,6 @@ function App() {
                 </div>
                 {expandCl===c.id&&(
                   <div style={{padding:"0 18px 16px"}}>
-                    {/* Listino */}
                     <div style={{marginTop:14,marginBottom:14}}>
                       <div style={{fontSize:"0.6rem",textTransform:"uppercase",color:"#aaa",marginBottom:8}}>Listino prezzi personale</div>
                       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:6}}>
@@ -839,7 +848,6 @@ function App() {
                         ))}
                       </div>
                     </div>
-                    {/* Ordini */}
                     <div style={{fontSize:"0.6rem",textTransform:"uppercase",color:"#aaa",marginBottom:8}}>Storico ordini ({(c.ordini||[]).length})</div>
                     {(c.ordini||[]).length===0&&<div style={{fontSize:"0.75rem",color:"#ccc",padding:"12px 0"}}>Nessun ordine ancora</div>}
                     {(c.ordini||[]).map(o=>(
@@ -859,7 +867,6 @@ function App() {
                             <button onClick={()=>exportPreventivoPDF(c,o)} style={{background:"#2e2e2e",color:"#fff",border:"none",borderRadius:2,padding:"3px 8px",cursor:"pointer",fontFamily:"monospace",fontSize:"0.6rem"}}>PDF</button>
                           </div>
                         </div>
-                        {/* Dossier personalizzato incluso nell'ordine */}
                         {o.dossierPersonalizzato&&(
                           <div style={{padding:"6px 14px",background:"#f0f7ff",borderBottom:"1px solid #dce8f0"}}>
                             <div style={{fontSize:"0.6rem",color:"#888",marginBottom:4,textTransform:"uppercase"}}>Contenuto dossier</div>
@@ -895,9 +902,9 @@ function App() {
         </div>
       </div>
 
-      {editRep&&<EditReportModal report={editRep} onSave={handleEditReport} onClose={()=>setEditRep(null)} />}
-      {(newCl||editCl)&&<ClienteModal cliente={editCl||null} onSave={handleSaveCl} onClose={()=>{setNewCl(false);setEditCl(null);}} />}
-      {ordineFor&&<OrdineModal cliente={ordineFor} onSave={handleSaveOrdine} onClose={()=>setOrdineFor(null)} />}
+      {editRep&&<EditReportModal report={editRep} onSave={handleEditReport} onClose={()=>setEditRep(null)}/>}
+      {(newCl||editCl)&&<ClienteModal cliente={editCl||null} onSave={handleSaveCl} onClose={()=>{setNewCl(false);setEditCl(null);}}/>}
+      {ordineFor&&<OrdineModal cliente={ordineFor} onSave={handleSaveOrdine} onClose={()=>setOrdineFor(null)}/>}
 
       {delConf&&(
         <div className="overlay" onClick={()=>setDelConf(null)}>
@@ -916,7 +923,7 @@ function App() {
         <div className="overlay" onClick={()=>setDelClConf(null)}>
           <div className="modal" style={{maxWidth:360}} onClick={e=>e.stopPropagation()}>
             <h3 style={{fontFamily:"Georgia,serif",marginBottom:12}}>Elimina cliente?</h3>
-            <p style={{fontSize:"0.82rem",color:"#555",marginBottom:20}}>Verranno eliminati anche tutti gli ordini associati.</p>
+            <p style={{fontSize:"0.82rem",color:"#555",marginBottom:20}}>Verranno eliminati anche tutti gli ordini.</p>
             <div style={{display:"flex",gap:10}}>
               <button onClick={()=>handleDelCl(delClConf)} style={{flex:1,padding:12,background:"#c62828",color:"#fff",border:"none",borderRadius:3,cursor:"pointer",fontFamily:"monospace",fontSize:"0.75rem",textTransform:"uppercase"}}>🗑 Elimina</button>
               <button onClick={()=>setDelClConf(null)} style={{flex:1,padding:12,background:"#e8e4dc",color:"#555",border:"none",borderRadius:3,cursor:"pointer",fontFamily:"monospace",fontSize:"0.75rem",textTransform:"uppercase"}}>Annulla</button>
