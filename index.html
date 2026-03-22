@@ -26,10 +26,19 @@ const SB_URL = "https://fpvvtagszklzamwtpbjt.supabase.co";
 const SB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZwdnZ0YWdzemtsemFtd3RwYmp0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzQxMDQzODEsImV4cCI6MjA4OTY4MDM4MX0.cfddzqRfpQ2QMoJlXNvm28ntjadoWxrInq5bIX_nYbI";
 const sb = supabase.createClient(SB_URL, SB_KEY);
 
-const USERS_URL = "https://raw.githubusercontent.com/bigtelemarketing/lextrace/main/users.json";
+const REPO_OWNER = "bigtelemarketing";
+const REPO_NAME  = "lextrace";
+const USERS_FILE = "users.json";
+const USERS_URL  = `https://raw.githubusercontent.com/${REPO_OWNER}/${REPO_NAME}/main/${USERS_FILE}`;
 const SESSION_KEY = "lextrace_session";
 
-// ─── AUTH con users.json ──────────────────────────────────────────────────────
+// ─── TOKEN DA SUPABASE ────────────────────────────────────────────────────────
+async function getGhToken() {
+  const { data } = await sb.from("settings").select("value").eq("key", "gh_token").single();
+  return data?.value || null;
+}
+
+// ─── USERS.JSON su GitHub ─────────────────────────────────────────────────────
 async function fetchUsers() {
   try {
     const r = await fetch(USERS_URL + "?t=" + Date.now());
@@ -37,26 +46,38 @@ async function fetchUsers() {
   } catch { return []; }
 }
 
+async function writeUsers(users) {
+  const token = await getGhToken();
+  if(!token) return { ok: false, error: "Token non trovato su Supabase" };
+  try {
+    const res = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${USERS_FILE}`, {
+      headers: { Authorization: "token " + token, Accept: "application/vnd.github.v3+json" }
+    });
+    const file = await res.json();
+    if(!file.sha) return { ok: false, error: "File non trovato: " + JSON.stringify(file) };
+    const content = btoa(unescape(encodeURIComponent(JSON.stringify(users, null, 2))));
+    const upd = await fetch(`https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${USERS_FILE}`, {
+      method: "PUT",
+      headers: { Authorization: "token " + token, "Content-Type": "application/json" },
+      body: JSON.stringify({ message: "update users", content, sha: file.sha })
+    });
+    return { ok: upd.ok, error: upd.ok ? null : "Errore PUT: " + upd.status };
+  } catch(e) { return { ok: false, error: e.message }; }
+}
+
+// ─── AUTH ─────────────────────────────────────────────────────────────────────
 async function loginUser(email, password) {
   const users = await fetchUsers();
   const user = users.find(u => u.email === email && u.password === password);
-  if(user) {
-    localStorage.setItem(SESSION_KEY, JSON.stringify(user));
-    return { user, error: null };
-  }
+  if(user) { localStorage.setItem(SESSION_KEY, JSON.stringify(user)); return { user, error: null }; }
   return { user: null, error: "Email o password non validi" };
 }
-
 function getSession() {
-  try { return JSON.parse(localStorage.getItem(SESSION_KEY)); }
-  catch { return null; }
+  try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch { return null; }
 }
+function logoutUser() { localStorage.removeItem(SESSION_KEY); }
 
-function logoutUser() {
-  localStorage.removeItem(SESSION_KEY);
-}
-
-// ─── DB Supabase ──────────────────────────────────────────────────────────────
+// ─── SUPABASE DB ──────────────────────────────────────────────────────────────
 async function loadReports(userId, isAdmin) {
   let q = sb.from("reports").select("*").order("id", { ascending: false });
   if(!isAdmin) q = q.eq("user_id", userId);
@@ -276,7 +297,6 @@ function exportPreventivoPDF(cliente,ordine) {
   doc.save("Preventivo_"+(cliente.nome||"cliente").replace(/\s+/g,"_")+"_"+new Date().toISOString().slice(0,10)+".pdf");
 }
 
-// ─── LOGIN ────────────────────────────────────────────────────────────────────
 function LoginPage({onLogin}) {
   const [email,setEmail]=useState("");
   const [password,setPassword]=useState("");
@@ -309,7 +329,7 @@ function LoginPage({onLogin}) {
             </div>
             {error&&<div style={{background:"#3a1a1a",border:"1px solid #b8302a",borderRadius:4,padding:"10px 14px",marginBottom:16,fontSize:"0.78rem",color:"#ff6b6b"}}>⚠ {error}</div>}
             <button type="submit" disabled={loading} style={{width:"100%",padding:13,background:loading?"#555":"#b8302a",color:"#fff",border:"none",borderRadius:4,cursor:loading?"not-allowed":"pointer",fontFamily:"monospace",fontSize:"0.82rem",textTransform:"uppercase",letterSpacing:"0.06em"}}>
-              {loading?"Verifica credenziali...":"Accedi →"}
+              {loading?"Verifica...":"Accedi →"}
             </button>
           </div>
         </form>
@@ -319,50 +339,145 @@ function LoginPage({onLogin}) {
   );
 }
 
-// ─── PANNELLO UTENTI ADMIN ────────────────────────────────────────────────────
 function AdminUtenti({onClose}) {
   const [utenti,setUtenti]=useState([]);
   const [loading,setLoading]=useState(true);
+  const [saving,setSaving]=useState(false);
+  const [msg,setMsg]=useState("");
+  const [showNew,setShowNew]=useState(false);
+  const [newNome,setNewNome]=useState("");
+  const [newEmail,setNewEmail]=useState("");
+  const [newPass,setNewPass]=useState("");
+  const [newRuolo,setNewRuolo]=useState("utente");
+  const [editPassId,setEditPassId]=useState(null);
+  const [editPassVal,setEditPassVal]=useState("");
 
-  useEffect(()=>{
-    fetchUsers().then(u=>{setUtenti(u);setLoading(false);});
-  },[]);
+  useEffect(()=>{ fetchUsers().then(u=>{setUtenti(u);setLoading(false);}); },[]);
+
+  const showMsg=m=>{setMsg(m);setTimeout(()=>setMsg(""),3500);};
+
+  const doWrite=async(nuovi)=>{
+    const r=await writeUsers(nuovi);
+    if(!r.ok){showMsg("❌ "+(r.error||"Errore salvataggio"));return false;}
+    return true;
+  };
+
+  const handleCreate=async()=>{
+    if(!newNome||!newEmail||!newPass){showMsg("❌ Compila tutti i campi");return;}
+    if(utenti.find(u=>u.email===newEmail)){showMsg("❌ Email già registrata");return;}
+    setSaving(true);
+    const nuovi=[...utenti,{id:String(Date.now()),nome:newNome,email:newEmail,password:newPass,ruolo:newRuolo}];
+    const ok=await doWrite(nuovi);
+    if(ok){setUtenti(nuovi);setShowNew(false);setNewNome("");setNewEmail("");setNewPass("");setNewRuolo("utente");showMsg("✅ Utente creato!");}
+    setSaving(false);
+  };
+
+  const handleRuolo=async(id,ruolo)=>{
+    const nuovi=utenti.map(u=>u.id===id?{...u,ruolo}:u);
+    const ok=await doWrite(nuovi);
+    if(ok){setUtenti(nuovi);showMsg("✅ Ruolo aggiornato");}
+  };
+
+  const handlePass=async()=>{
+    if(!editPassVal||editPassVal.length<4){showMsg("❌ Password troppo corta");return;}
+    const nuovi=utenti.map(u=>u.id===editPassId?{...u,password:editPassVal}:u);
+    const ok=await doWrite(nuovi);
+    if(ok){setUtenti(nuovi);setEditPassId(null);setEditPassVal("");showMsg("✅ Password aggiornata");}
+  };
+
+  const handleDelete=async(id)=>{
+    if(utenti.length<=1){showMsg("❌ Non puoi eliminare l'ultimo utente");return;}
+    const nuovi=utenti.filter(u=>u.id!==id);
+    const ok=await doWrite(nuovi);
+    if(ok){setUtenti(nuovi);showMsg("🗑 Utente eliminato");}
+  };
+
+  const inp={width:"100%",padding:"8px 10px",border:"1px solid #ccc",borderRadius:3,fontFamily:"monospace",fontSize:"0.8rem",background:"#fafaf8",outline:"none"};
+  const lbl={display:"block",fontSize:"0.6rem",textTransform:"uppercase",color:"#888",marginBottom:4};
 
   return(
     <div className="overlay" onClick={onClose}>
-      <div className="modal" style={{maxWidth:700}} onClick={e=>e.stopPropagation()}>
+      <div className="modal" style={{maxWidth:720}} onClick={e=>e.stopPropagation()}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20,borderBottom:"2px solid #1a1a1a",paddingBottom:12}}>
-          <h2 style={{fontFamily:"Georgia,serif",fontSize:"1.3rem"}}>👑 Utenti registrati</h2>
+          <div>
+            <h2 style={{fontFamily:"Georgia,serif",fontSize:"1.3rem"}}>👑 Gestione Utenti</h2>
+            <p style={{fontSize:"0.65rem",color:"#888",marginTop:3}}>Modifiche permanenti — funziona da qualsiasi browser</p>
+          </div>
           <button onClick={onClose} style={{background:"none",border:"none",fontSize:"1.2rem",cursor:"pointer"}}>✕</button>
         </div>
-        {loading?<div style={{textAlign:"center",padding:20,color:"#888"}}>Caricamento...</div>:(
+
+        {msg&&<div style={{marginBottom:14,padding:"10px 14px",background:msg.includes("✅")||msg.includes("🗑")?"#e8f5e9":"#ffebee",borderRadius:3,fontSize:"0.78rem",color:msg.includes("✅")||msg.includes("🗑")?"#2e7d32":"#b8302a"}}>{msg}</div>}
+
+        {loading?<div style={{textAlign:"center",padding:20,color:"#888"}}>⏳ Caricamento...</div>:(
           <div style={{marginBottom:20}}>
-            <div style={{fontSize:"0.6rem",textTransform:"uppercase",color:"#aaa",marginBottom:10}}>Utenti nel sistema ({utenti.length})</div>
+            <div style={{fontSize:"0.6rem",textTransform:"uppercase",color:"#aaa",marginBottom:10}}>Utenti ({utenti.length})</div>
             {utenti.map(u=>(
-              <div key={u.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",background:"#fafaf8",border:"1px solid #e8e4dc",borderRadius:4,marginBottom:8,flexWrap:"wrap",gap:8}}>
-                <div>
-                  <div style={{fontSize:"0.82rem",fontWeight:"bold",color:"#1a1a1a"}}>{u.nome}</div>
-                  <div style={{fontSize:"0.65rem",color:"#888",marginTop:2}}>{u.email}</div>
+              <div key={u.id} style={{background:"#fafaf8",border:"1px solid #e8e4dc",borderRadius:4,marginBottom:10,overflow:"hidden"}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 14px",flexWrap:"wrap",gap:8}}>
+                  <div>
+                    <div style={{fontSize:"0.85rem",fontWeight:"bold",color:"#1a1a1a"}}>{u.nome}</div>
+                    <div style={{fontSize:"0.65rem",color:"#888",marginTop:2}}>{u.email}</div>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                    <select value={u.ruolo} onChange={e=>handleRuolo(u.id,e.target.value)}
+                      style={{border:"1px solid #ddd",borderRadius:3,padding:"5px 10px",fontFamily:"monospace",fontSize:"0.7rem",background:"#fff",outline:"none",cursor:"pointer",color:u.ruolo==="admin"?"#e67e00":"#2e7d32",fontWeight:"bold"}}>
+                      <option value="utente">👤 Utente</option>
+                      <option value="admin">👑 Admin</option>
+                    </select>
+                    <button onClick={()=>{setEditPassId(editPassId===u.id?null:u.id);setEditPassVal("");}}
+                      style={{background:"#1565c0",color:"#fff",border:"none",borderRadius:3,padding:"5px 10px",cursor:"pointer",fontFamily:"monospace",fontSize:"0.65rem"}}>
+                      🔑 Password
+                    </button>
+                    <button onClick={()=>handleDelete(u.id)}
+                      style={{background:"#c62828",color:"#fff",border:"none",borderRadius:3,padding:"5px 10px",cursor:"pointer",fontFamily:"monospace",fontSize:"0.65rem"}}>
+                      🗑
+                    </button>
+                  </div>
                 </div>
-                <span style={{fontSize:"0.65rem",padding:"3px 10px",borderRadius:10,background:u.ruolo==="admin"?"#fff3e0":"#e8f5e9",color:u.ruolo==="admin"?"#e67e00":"#2e7d32"}}>
-                  {u.ruolo==="admin"?"👑 Admin":"👤 Utente"}
-                </span>
+                {editPassId===u.id&&(
+                  <div style={{padding:"10px 14px",background:"#f0f7ff",borderTop:"1px solid #dce8f8"}}>
+                    <div style={{display:"flex",gap:8}}>
+                      <input style={{...inp,flex:1}} type="password" value={editPassVal} onChange={e=>setEditPassVal(e.target.value)} placeholder="Nuova password..."/>
+                      <button onClick={handlePass} style={{padding:"8px 14px",background:"#2e7d32",color:"#fff",border:"none",borderRadius:3,cursor:"pointer",fontFamily:"monospace",fontSize:"0.7rem",whiteSpace:"nowrap"}}>💾 Salva</button>
+                      <button onClick={()=>{setEditPassId(null);setEditPassVal("");}} style={{padding:"8px 10px",background:"#e8e4dc",color:"#555",border:"none",borderRadius:3,cursor:"pointer",fontFamily:"monospace",fontSize:"0.7rem"}}>✕</button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
         )}
-        <div style={{background:"#f0f7ff",border:"1px solid #bee3f8",borderRadius:4,padding:"14px 16px"}}>
-          <div style={{fontSize:"0.75rem",fontWeight:"bold",color:"#1565c0",marginBottom:6}}>ℹ Come aggiungere utenti</div>
-          <div style={{fontSize:"0.72rem",color:"#444",lineHeight:1.7}}>
-            1. Vai su <strong>github.com/bigtelemarketing/lextrace</strong><br/>
-            2. Apri il file <strong>users.json</strong> e clicca ✏️<br/>
-            3. Aggiungi una riga nel formato:<br/>
-            <code style={{background:"#e8f0fe",padding:"2px 6px",borderRadius:2,fontSize:"0.68rem"}}>
-              {`{"id":"3","nome":"Nome","email":"email@x.it","password":"pass","ruolo":"utente"}`}
-            </code><br/>
-            4. Clicca <strong>Commit changes</strong>
+
+        {!showNew?(
+          <button onClick={()=>setShowNew(true)} style={{width:"100%",padding:12,background:"#1a1a1a",color:"#fff",border:"none",borderRadius:3,cursor:"pointer",fontFamily:"monospace",fontSize:"0.75rem",textTransform:"uppercase"}}>
+            + Crea nuovo utente
+          </button>
+        ):(
+          <div style={{background:"#f5f2eb",border:"1px solid #d8d4cc",borderRadius:4,padding:20}}>
+            <div style={{fontSize:"0.62rem",textTransform:"uppercase",color:"#aaa",marginBottom:14}}>Nuovo utente</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+              <div><label style={lbl}>Nome completo *</label><input style={inp} value={newNome} onChange={e=>setNewNome(e.target.value)} placeholder="Mario Rossi"/></div>
+              <div><label style={lbl}>Ruolo</label>
+                <select value={newRuolo} onChange={e=>setNewRuolo(e.target.value)} style={{...inp,color:newRuolo==="admin"?"#e67e00":"#2e7d32",fontWeight:"bold"}}>
+                  <option value="utente">👤 Utente</option>
+                  <option value="admin">👑 Admin</option>
+                </select>
+              </div>
+              <div><label style={lbl}>Email *</label><input style={inp} type="email" value={newEmail} onChange={e=>setNewEmail(e.target.value)} placeholder="mario@esempio.it"/></div>
+              <div><label style={lbl}>Password *</label><input style={inp} type="password" value={newPass} onChange={e=>setNewPass(e.target.value)} placeholder="min 4 caratteri"/></div>
+            </div>
+            <div style={{display:"flex",gap:10}}>
+              <button onClick={handleCreate} disabled={saving||!newNome||!newEmail||!newPass}
+                style={{flex:1,padding:12,background:(!newNome||!newEmail||!newPass||saving)?"#ccc":"#2e7d32",color:"#fff",border:"none",borderRadius:3,cursor:(!newNome||!newEmail||!newPass||saving)?"not-allowed":"pointer",fontFamily:"monospace",fontSize:"0.75rem",textTransform:"uppercase"}}>
+                {saving?"⏳ Salvataggio...":"💾 Crea utente"}
+              </button>
+              <button onClick={()=>{setShowNew(false);setNewNome("");setNewEmail("");setNewPass("");setNewRuolo("utente");}}
+                style={{flex:1,padding:12,background:"#e8e4dc",color:"#555",border:"none",borderRadius:3,cursor:"pointer",fontFamily:"monospace",fontSize:"0.75rem",textTransform:"uppercase"}}>
+                Annulla
+              </button>
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
@@ -678,7 +793,7 @@ function App() {
   const totCl=c=>(c.ordini||[]).reduce((a,o)=>a+(o.totale||0),0);
   const arrCl=c=>(c.ordini||[]).filter(o=>o.stato==="arretrato").reduce((a,o)=>a+(o.totale||0),0);
 
-  if(!user) return <LoginPage onLogin={u=>{setUser(u);}}/>;
+  if(!user) return <LoginPage onLogin={u=>setUser(u)}/>;
 
   return(
     <div style={{background:"#f5f2eb",minHeight:"100vh",padding:"28px 20px"}}>
@@ -801,7 +916,7 @@ function App() {
 
         {view==="archivio"&&(
           <div>
-            {isAdmin&&<div style={{background:"#fff3e0",border:"1px solid #ffe0b2",borderRadius:4,padding:"10px 16px",marginBottom:16,fontSize:"0.75rem",color:"#e67e00"}}>👑 Admin — tutti i dossier di tutti gli utenti</div>}
+            {isAdmin&&<div style={{background:"#fff3e0",border:"1px solid #ffe0b2",borderRadius:4,padding:"10px 16px",marginBottom:16,fontSize:"0.75rem",color:"#e67e00"}}>👑 Admin — tutti i dossier</div>}
             <div style={{position:"relative",marginBottom:20}}>
               <input style={{...inp,paddingLeft:36}} value={searchR} onChange={e=>setSearchR(e.target.value)} placeholder="Cerca per nome, CF, P.IVA, contesto..."/>
               <span style={{position:"absolute",left:12,top:"50%",transform:"translateY(-50%)",color:"#aaa"}}>🔍</span>
