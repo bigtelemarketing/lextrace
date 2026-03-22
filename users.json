@@ -1,4 +1,4 @@
 [
-  {"id":"1","nome":"Admin","email":"admin@tuamail.it","password":"admin123","ruolo":"admin"},
-  {"id":"2","nome":"Mario Rossi","email":"mario@esempio.it","password":"pass123","ruolo":"utente"}
+  {"id":"1","nome":"Admin","email":"admin@admin","password":"Napoli2026!","ruolo":"admin"},
+  {"id":"2","nome":"Osiris","email":"consulensosiris@gmail.com","password":"napoli2026","ruolo":"utente"}
 ]
