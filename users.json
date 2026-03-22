@@ -1,4 +1,4 @@
 [
-  {"id":"1","nome":"Admin","email":"admin@admin","password":"Napoli2026!","ruolo":"admin"},
+  {"id":"1","nome":"Admin","email":"admin@admin.it","password":"Napoli2026!","ruolo":"admin"},
   {"id":"2","nome":"Osiris","email":"consulensosiris@gmail.com","password":"napoli2026","ruolo":"utente"}
 ]
